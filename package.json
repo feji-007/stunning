@@ -1,0 +1,51 @@
+{
+  "name": "stunning",
+  "version": "1.0.0",
+  "description": "绝色（Stunning）— 本地大模型推理 + AI 视频生成桌面应用，基于 Electron + React",
+  "main": "electron/main.js",
+  "author": "",
+  "license": "MIT",
+  "scripts": {
+    "dev": "concurrently -k \"vite\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
+    "dev:vite": "vite",
+    "dev:electron": "cross-env NODE_ENV=development electron .",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "cross-env NODE_ENV=production electron .",
+    "dist": "vite build && electron-builder"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "node-llama-cpp": "^3.1.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-markdown": "^9.0.1",
+    "react-syntax-highlighter": "^15.5.0",
+    "remark-gfm": "^4.0.0",
+    "zustand": "^4.5.4",
+    "lucide-react": "^0.439.0",
+    "uuid": "^10.0.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "concurrently": "^9.0.1",
+    "cross-env": "^7.0.3",
+    "electron": "^32.1.2",
+    "electron-builder": "^25.0.5",
+    "vite": "^5.4.8",
+    "wait-on": "^8.0.1"
+  },
+  "build": {
+    "appId": "com.stunning.app",
+    "productName": "绝色",
+    "files": [
+      "dist/**/*",
+      "electron/**/*"
+    ],
+    "directories": {
+      "output": "release"
+    }
+  },
+  "allowScripts": {}
+}

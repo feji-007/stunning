@@ -1,0 +1,11 @@
+node_modules/
+dist/
+release/
+.data/
+*.log
+.env
+.DS_Store
+Thumbs.db
+*.pem
+.vscode/
+.idea/
