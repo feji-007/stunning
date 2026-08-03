@@ -30,7 +30,14 @@ async function wrap(promise, label) {
   try {
     return await promise;
   } catch (err) {
-    console.error(`[bridge] ${label} 失败:`, err);
+    // 仅在真实 Electron 环境下将其视为错误并打印到控制台。
+    // 在非 Electron（浏览器）环境使用 mock 实现时，避免大量 error 输出干扰调试。
+    if (rawApi) {
+      console.error(`[bridge] ${label} 失败:`, err);
+    } else {
+      // 非 Electron 环境下记录为调试信息，减少噪音
+      if (console.debug) console.debug && console.debug(`[bridge] ${label} (mock) 失败:`, err && err.message ? err.message : err);
+    }
     throw err;
   }
 }
