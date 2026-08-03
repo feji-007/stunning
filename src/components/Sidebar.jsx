@@ -1,5 +1,5 @@
 import { useStore } from '../store/useStore';
-import { MessageSquare, Cpu, Server, Settings, Plus, Trash2, Box, Film } from 'lucide-react';
+import { MessageSquare, Cpu, Server, Settings, Plus, Trash2, Box, Film, Bot } from 'lucide-react';
 
 export default function Sidebar() {
   const sessions = useStore((s) => s.sessions);
@@ -12,6 +12,7 @@ export default function Sidebar() {
 
   const navItems = [
     { id: 'chat', label: '聊天', icon: MessageSquare },
+    { id: 'agents', label: 'AI Agent', icon: Bot },
     { id: 'models', label: '模型', icon: Cpu },
     { id: 'video', label: '视频生成', icon: Film },
     { id: 'api', label: 'API 服务', icon: Server },

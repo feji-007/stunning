@@ -51,6 +51,14 @@ const DEFAULT_CONFIG = {
     seed: -1,              // 随机种子，-1 表示随机
     outputDir: '',         // 视频下载目录，空则用 ~/Videos/stunning
   },
+
+  // ===== 后端服务器连接（用户认证 / AI Agent）=====
+  // 客户端通过此地址连接服务器；数据库连接信息只在服务端，客户端无感
+  serverUrl: 'http://localhost:3001',
+  // 登录后获得的 JWT（持久化，下次启动自动恢复登录态）
+  authToken: '',
+  // 当前登录用户 ID（便于启动时恢复）
+  userId: null,
 };
 
 let cache = null;

@@ -79,4 +79,47 @@ contextBridge.exposeInMainWorld('api', {
       return () => ipcRenderer.removeListener('video:error', handler);
     },
   },
+
+  // ===== 后端服务器：认证 / 用户 / AI Agent =====
+  server: {
+    // 健康检查
+    health: () => ipcRenderer.invoke('server:health'),
+    // 认证
+    register: (payload) => ipcRenderer.invoke('server:register', payload),
+    login: (payload) => ipcRenderer.invoke('server:login', payload),
+    logout: () => ipcRenderer.invoke('server:logout'),
+    getAuth: () => ipcRenderer.invoke('server:get-auth'),
+    setServerUrl: (url) => ipcRenderer.invoke('server:set-server-url', url),
+    // 用户
+    getProfile: () => ipcRenderer.invoke('server:get-profile'),
+    updateProfile: (partial) => ipcRenderer.invoke('server:update-profile', partial),
+    getPoints: () => ipcRenderer.invoke('server:get-points'),
+    addPoints: (delta) => ipcRenderer.invoke('server:add-points', delta),
+    // Agent
+    listAgents: () => ipcRenderer.invoke('server:list-agents'),
+    getAgent: (id) => ipcRenderer.invoke('server:get-agent', id),
+    createAgent: (payload) => ipcRenderer.invoke('server:create-agent', payload),
+    getAgentMessages: (id) => ipcRenderer.invoke('server:get-agent-messages', id),
+
+    // Agent 流式对话：token / done / error 通过事件推送
+    chatStream: {
+      start: (agentId, message, history) => ipcRenderer.invoke('server:agent-chat-start', agentId, message, history),
+      cancel: () => ipcRenderer.invoke('server:agent-chat-cancel'),
+      onToken: (callback) => {
+        const handler = (_e, token) => callback(token);
+        ipcRenderer.on('server:agent-chat-token', handler);
+        return () => ipcRenderer.removeListener('server:agent-chat-token', handler);
+      },
+      onDone: (callback) => {
+        const handler = (_e, payload) => callback(payload);
+        ipcRenderer.on('server:agent-chat-done', handler);
+        return () => ipcRenderer.removeListener('server:agent-chat-done', handler);
+      },
+      onError: (callback) => {
+        const handler = (_e, err) => callback(err);
+        ipcRenderer.on('server:agent-chat-error', handler);
+        return () => ipcRenderer.removeListener('server:agent-chat-error', handler);
+      },
+    },
+  },
 });

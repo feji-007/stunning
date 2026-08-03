@@ -421,6 +421,224 @@ export const useStore = create((set, get) => ({
   },
 
   // ===== UI 状态 =====
-  activeView: 'chat', // 'chat' | 'models' | 'api' | 'video' | 'settings'
+  activeView: 'chat', // 'chat' | 'models' | 'api' | 'video' | 'settings' | 'agents'
   setActiveView: (view) => set({ activeView: view }),
+
+  // ===== 认证 / 用户 =====
+  // 登录态：启动时通过 initAuth 恢复
+  authInitialized: false,
+  isAuthenticated: false,
+  user: null,           // { id, username, nickname, avatar, points }
+  authError: null,
+  isAuthLoading: false,
+  serverUrl: 'http://localhost:3001',
+  serverReachable: null, // null=未检测 | true | false
+
+  // 启动时恢复登录态：读取本地 token，若有则拉取 profile
+  initAuth: async () => {
+    try {
+      const auth = await bridge.server.getAuth();
+      if (auth?.serverUrl) set({ serverUrl: auth.serverUrl });
+      if (auth?.token) {
+        try {
+          const profile = await bridge.server.getProfile();
+          set({ isAuthenticated: true, user: profile, authInitialized: true });
+          return true;
+        } catch (err) {
+          // 仅当 401（token 失效）时才清除登录态；
+          // 网络错误（服务器暂时不可达）保留 token，让用户稍后重试
+          if (err?.status === 401) {
+            await bridge.server.logout();
+          }
+          set({ isAuthenticated: false, user: null, authInitialized: true });
+          return false;
+        }
+      }
+      set({ authInitialized: true });
+      return false;
+    } catch (err) {
+      set({ authInitialized: true });
+      return false;
+    }
+  },
+
+  // 检测服务器连通性
+  checkServer: async () => {
+    try {
+      const r = await bridge.server.health();
+      set({ serverReachable: !!r.ok });
+      return r;
+    } catch (err) {
+      set({ serverReachable: false });
+      return { ok: false, error: err.message };
+    }
+  },
+
+  setServerUrl: async (url) => {
+    const saved = await bridge.server.setServerUrl(url);
+    set({ serverUrl: saved, serverReachable: null });
+    return saved;
+  },
+
+  // 登录
+  login: async (username, password) => {
+    set({ isAuthLoading: true, authError: null });
+    try {
+      const data = await bridge.server.login({ username, password });
+      set({ isAuthenticated: true, user: data.user, isAuthLoading: false });
+      return data;
+    } catch (err) {
+      set({ isAuthLoading: false, authError: err.message });
+      throw err;
+    }
+  },
+
+  // 注册
+  register: async (username, password, nickname) => {
+    set({ isAuthLoading: true, authError: null });
+    try {
+      const data = await bridge.server.register({ username, password, nickname });
+      set({ isAuthenticated: true, user: data.user, isAuthLoading: false });
+      return data;
+    } catch (err) {
+      set({ isAuthLoading: false, authError: err.message });
+      throw err;
+    }
+  },
+
+  // 退出登录
+  logout: async () => {
+    await bridge.server.logout();
+    set({
+      isAuthenticated: false,
+      user: null,
+      agents: [],
+      activeAgentId: null,
+      agentMessages: [],
+      activeView: 'chat',
+    });
+  },
+
+  // 刷新用户资料（含积分）
+  refreshProfile: async () => {
+    try {
+      const profile = await bridge.server.getProfile();
+      set({ user: profile });
+      return profile;
+    } catch (err) {
+      return null;
+    }
+  },
+
+  // 更新资料（昵称 / 头像）
+  updateProfile: async (partial) => {
+    const profile = await bridge.server.updateProfile(partial);
+    set({ user: profile });
+    return profile;
+  },
+
+  // ===== AI Agent =====
+  agents: [],
+  activeAgentId: null,
+  agentMessages: [],          // 当前 Agent 的消息列表 [{id, role, content, createdAt}]
+  isAgentGenerating: false,
+  agentError: null,
+
+  loadAgents: async () => {
+    try {
+      const list = await bridge.server.listAgents();
+      set({ agents: list });
+      return list;
+    } catch (err) {
+      set({ agents: [] });
+      return [];
+    }
+  },
+
+  selectAgent: async (agentId) => {
+    set({ activeAgentId: agentId, agentMessages: [], agentError: null });
+    if (agentId) {
+      try {
+        const msgs = await bridge.server.getAgentMessages(agentId);
+        set({ agentMessages: msgs });
+      } catch (err) {
+        set({ agentMessages: [] });
+      }
+    }
+  },
+
+  createAgent: async (payload) => {
+    const agent = await bridge.server.createAgent(payload);
+    await get().loadAgents();
+    return agent;
+  },
+
+  // 与 Agent 流式对话
+  sendAgentMessage: async (content) => {
+    const { activeAgentId, agentMessages } = get();
+    if (!activeAgentId) return;
+    if (!content.trim()) return;
+
+    const userMsg = { id: uuidv4(), role: 'user', content, createdAt: Date.now() };
+    const placeholder = { id: uuidv4(), role: 'assistant', content: '', isStreaming: true, createdAt: Date.now() };
+    set({
+      agentMessages: [...agentMessages, userMsg, placeholder],
+      isAgentGenerating: true,
+      agentError: null,
+    });
+
+    // 历史（不含占位）
+    const history = [...agentMessages, userMsg]
+      .filter((m) => !m.isError)
+      .map((m) => ({ role: m.role, content: m.content }));
+
+    const offToken = bridge.server.chatStream.onToken((token) => {
+      set((state) => ({
+        agentMessages: state.agentMessages.map((m) =>
+          m.id === placeholder.id ? { ...m, content: m.content + token } : m
+        ),
+      }));
+    });
+    const offDone = bridge.server.chatStream.onDone(() => {
+      set((state) => ({
+        agentMessages: state.agentMessages.map((m) =>
+          m.id === placeholder.id ? { ...m, isStreaming: false } : m
+        ),
+        isAgentGenerating: false,
+      }));
+      offToken(); offDone(); offError();
+    });
+    const offError = bridge.server.chatStream.onError((err) => {
+      set((state) => ({
+        agentMessages: state.agentMessages.map((m) =>
+          m.id === placeholder.id
+            ? { ...m, isStreaming: false, isError: true, content: m.content + `\n\n❌ 错误: ${err.message}` }
+            : m
+        ),
+        isAgentGenerating: false,
+        agentError: err.message,
+      }));
+      offToken(); offDone(); offError();
+    });
+
+    try {
+      await bridge.server.chatStream.start(activeAgentId, content, history);
+    } catch (err) {
+      set((state) => ({
+        agentMessages: state.agentMessages.map((m) =>
+          m.id === placeholder.id
+            ? { ...m, isStreaming: false, isError: true, content: `❌ 对话失败: ${err.message}` }
+            : m
+        ),
+        isAgentGenerating: false,
+        agentError: err.message,
+      }));
+      offToken(); offDone(); offError();
+    }
+  },
+
+  stopAgentGeneration: () => {
+    bridge.server.chatStream.cancel();
+    set({ isAgentGenerating: false });
+  },
 }));
