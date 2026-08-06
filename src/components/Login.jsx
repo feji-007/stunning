@@ -58,7 +58,7 @@ export default function Login() {
         <div className="login-brand">
           <Box size={40} className="login-brand-icon" />
           <h1 className="login-title">绝色 · Stunning</h1>
-          <p className="login-subtitle">登录后即可使用 AI Agent 与全部功能</p>
+          <p className="login-subtitle">登录后即可使用视频生成功能</p>
         </div>
 
         {/* 模式切换 */}

@@ -2140,3 +2140,239 @@ body {
   border-radius: var(--radius-md);
   margin-bottom: 8px;
 }
+
+/* ============================================================
+ * 充值功能（RechargeModal + UserMenu 充值入口）
+ * ============================================================ */
+
+/* 顶栏积分可点击 */
+.user-menu-points--clickable {
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+}
+.user-menu-points--clickable:hover {
+  background: rgba(245, 158, 11, 0.22);
+}
+.user-menu-points--clickable:active {
+  transform: scale(0.96);
+}
+.user-menu-points-add {
+  opacity: 0.8;
+  margin-left: 1px;
+}
+
+/* 下拉菜单内的充值按钮 */
+.user-menu-recharge-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, #f59e0b, #f97316);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: filter 0.15s, transform 0.1s;
+  white-space: nowrap;
+}
+.user-menu-recharge-btn:hover { filter: brightness(1.08); }
+.user-menu-recharge-btn:active { transform: scale(0.96); }
+
+/* 充值弹窗 */
+.recharge-modal {
+  width: 560px;
+  max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 64px);
+  display: flex;
+  flex-direction: column;
+}
+.recharge-body {
+  padding: 20px 24px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* 当前余额条 */
+.recharge-balance {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(249, 115, 22, 0.08));
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  margin-bottom: 18px;
+  color: var(--warning);
+}
+.recharge-balance-label { font-size: 13px; color: var(--text-secondary); }
+.recharge-balance-value { font-size: 22px; font-weight: 800; color: var(--warning); margin-left: auto; }
+.recharge-balance-unit { font-size: 12px; color: var(--text-muted); }
+
+.recharge-plans-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+.recharge-empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 32px 0;
+  font-size: 13px;
+}
+
+/* 套餐网格 */
+.recharge-plans {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+.recharge-plan {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 18px 12px 14px;
+  background: var(--bg-card);
+  border: 2px solid var(--border-color);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.1s, background 0.15s;
+  text-align: center;
+}
+.recharge-plan:hover {
+  border-color: var(--warning);
+  transform: translateY(-2px);
+}
+.recharge-plan--active {
+  border-color: var(--warning);
+  background: rgba(245, 158, 11, 0.08);
+}
+.recharge-plan-tag {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, #ef4444, #f97316);
+  padding: 2px 6px;
+  border-radius: 100px;
+}
+.recharge-plan-points {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--warning);
+  line-height: 1;
+}
+.recharge-plan-points-unit {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.recharge-plan-bonus {
+  font-size: 11px;
+  color: var(--success, #10b981);
+  margin-top: 4px;
+}
+.recharge-plan-price {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-top: 8px;
+}
+.recharge-plan-label-text {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.recharge-plan-check {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--warning);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 错误与说明 */
+.recharge-error { margin: 12px 0; }
+.recharge-tips {
+  margin-top: 16px;
+  padding: 10px 12px;
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.7;
+}
+
+/* 底部操作栏 */
+.recharge-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 24px;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+.recharge-footer-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.recharge-footer-plan { font-size: 12px; color: var(--text-secondary); }
+.recharge-footer-price { font-size: 18px; font-weight: 800; color: var(--warning); }
+.recharge-footer-hint { font-size: 13px; color: var(--text-muted); }
+.recharge-pay-btn { min-width: 160px; justify-content: center; }
+
+/* 支付成功页 */
+.recharge-success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 32px 16px 16px;
+  text-align: center;
+}
+.recharge-success-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+.recharge-success-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+.recharge-success-points {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--warning);
+  margin-bottom: 4px;
+}
+.recharge-success-balance {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 20px;
+}
+.recharge-success-balance strong { color: var(--warning); font-weight: 700; }
+.recharge-success-btn { min-width: 140px; justify-content: center; }
+

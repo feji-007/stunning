@@ -5,6 +5,12 @@ const os = require('os');
 /**
  * 应用配置持久化
  * 优先保存到 ~/.stunning/config.json；沙箱环境下自动回退到项目目录下的 .data/config.json
+ *
+ * 仅保留视频生成相关配置：
+ *   - 服务器连接（认证用）
+ *   - 视频默认参数
+ *   - 视频生成提供商选择（内置 Seedance / 自定义）
+ *   - 自定义视频生成 AI 配置（方舟 API 兼容格式）
  */
 
 // 尝试候选目录，直到找到一个可写的
@@ -37,28 +43,36 @@ const CONFIG_DIR = resolveWritableDir('', null);
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 
 const DEFAULT_CONFIG = {
-  // 火山引擎方舟 API Key（在 https://console.volcengine.com/ark 创建）
-  arkApiKey: '',
-  // 视频生成模型 ID，默认 Seedance 2.0 Pro
-  videoModelId: 'doubao-seedance-2-0-pro',
-  // 备选模型：doubao-seedance-2-0-fast
+  // ===== 后端服务器连接（用户认证 / 内置 Seedance 视频生成）=====
+  serverUrl: 'http://localhost:3001',
+  // 登录后获得的 JWT（持久化，下次启动自动恢复登录态）
+  authToken: '',
+  // 当前登录用户 ID
+  userId: null,
+
+  // ===== 视频生成提供商 =====
+  // 'seedance' = 内置（服务器调用方舟，消耗积分）
+  // 'custom'   = 自定义（客户端直接调用用户配置的方舟兼容端点，不消耗积分）
+  videoProvider: 'seedance',
+
   // 默认生成参数
   videoDefaults: {
     duration: 5,            // 秒数：5 或 10
     resolution: '720p',     // 720p 或 1080p
-    ratio: '16:9',         // 16:9 | 9:16 | 1:1 | 4:3 | 3:4 | 21:9
+    ratio: '16:9',          // 16:9 | 9:16 | 1:1 | 4:3 | 3:4 | 21:9
     watermark: false,       // 是否带水印
     seed: -1,              // 随机种子，-1 表示随机
     outputDir: '',         // 视频下载目录，空则用 ~/Videos/stunning
   },
 
-  // ===== 后端服务器连接（用户认证 / AI Agent）=====
-  // 客户端通过此地址连接服务器；数据库连接信息只在服务端，客户端无感
-  serverUrl: 'http://localhost:3001',
-  // 登录后获得的 JWT（持久化，下次启动自动恢复登录态）
-  authToken: '',
-  // 当前登录用户 ID（便于启动时恢复）
-  userId: null,
+  // ===== 自定义视频生成 AI（方舟 API 兼容格式）=====
+  // 用户自带 key，客户端直接调用，不消耗服务器积分
+  customVideo: {
+    enabled: false,
+    baseURL: 'https://ark.cn-beijing.volces.com/api/v3',
+    apiKey: '',
+    modelId: 'doubao-seedance-2-0-pro',
+  },
 };
 
 let cache = null;
@@ -75,11 +89,12 @@ function loadConfig() {
     if (fs.existsSync(CONFIG_FILE)) {
       const raw = fs.readFileSync(CONFIG_FILE, 'utf-8');
       const parsed = JSON.parse(raw);
-      // 合并默认值，保证新增字段存在
+      // 合并默认值，保证新增字段存在；嵌套对象深合并一层
       cache = {
         ...DEFAULT_CONFIG,
         ...parsed,
         videoDefaults: { ...DEFAULT_CONFIG.videoDefaults, ...(parsed.videoDefaults || {}) },
+        customVideo: { ...DEFAULT_CONFIG.customVideo, ...(parsed.customVideo || {}) },
       };
     } else {
       cache = { ...DEFAULT_CONFIG };
@@ -109,7 +124,7 @@ function saveConfig(config) {
 }
 
 /**
- * 局部更新配置（浅合并，videoDefaults 深合并一层）
+ * 局部更新配置（浅合并，videoDefaults / customVideo 深合并一层）
  */
 function updateConfig(partial) {
   const current = loadConfig();
@@ -120,13 +135,16 @@ function updateConfig(partial) {
       ...current.videoDefaults,
       ...(partial.videoDefaults || {}),
     },
+    customVideo: {
+      ...current.customVideo,
+      ...(partial.customVideo || {}),
+    },
   };
   return saveConfig(next);
 }
 
 /**
  * 获取视频下载目录（兜底默认目录）
- * 优先使用用户配置的目录，失败时回退到可写的沙箱内路径
  */
 function getVideoOutputDir() {
   const config = loadConfig();
@@ -147,7 +165,6 @@ function getVideoOutputDir() {
       return d;
     } catch {}
   }
-  // 绝对兜底
   const tmp = path.join(os.tmpdir(), 'stunning-videos');
   try { if (!fs.existsSync(tmp)) fs.mkdirSync(tmp, { recursive: true }); } catch {}
   return tmp;

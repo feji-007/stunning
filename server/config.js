@@ -1,9 +1,11 @@
 /**
  * 服务器配置
  *
- * 数据库连接信息（SQLite 文件路径）、JWT 密钥、AI Agent 调用的 LLM 端点
- * 全部留在此处 —— 客户端无需、也无法感知这些信息（类似 QQ/微信的后端连接）。
- * 客户端只通过账号密码登录，拿到 JWT 后访问业务接口。
+ * 数据库连接信息、JWT 密钥、内置 Seedance 视频生成的方舟 API 凭证
+ * 全部留在此处 —— 客户端无需、也无法感知这些信息。
+ *
+ * 客户端只通过账号密码登录，拿到 JWT 后访问业务接口；
+ * 内置 Seedance 视频生成由服务器调用方舟 API，并按规则扣减用户积分。
  */
 const path = require('path');
 const fs = require('fs');
@@ -28,12 +30,30 @@ module.exports = {
   // 默认新用户积分
   defaultPoints: 100,
 
-  // AI Agent 对话所调用的 OpenAI 兼容 LLM 端点
-  // 默认指向桌面应用自带的本地 API 服务器（端口 1234），
-  // 也可改为任意 OpenAI 兼容服务（如官方 OpenAI、方舟、自建 vLLM 等）。
-  llm: {
-    baseURL: process.env.LLM_BASE_URL || 'http://localhost:1234/v1',
-    apiKey: process.env.LLM_API_KEY || 'stunning',
-    model: process.env.LLM_MODEL || 'local',
+  // 内置 Seedance 视频生成 —— 火山引擎方舟 API 凭证
+  // 由服务器持有，客户端无需自己的 key 即可使用内置 Seedance 2.0
+  // 用户积分作为消耗凭证：每次生成按规则扣减积分
+  ark: {
+    baseURL: process.env.ARK_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3',
+    apiKey: process.env.ARK_API_KEY || '',
+    // 内置默认模型（Seedance 2.0 Pro）
+    defaultModel: process.env.ARK_MODEL || 'doubao-seedance-2-0-pro',
   },
+
+  // 视频生成积分扣减规则
+  // 计算公式：duration(秒) × basePerSecond × (resolution==='1080p' ? hdMultiplier : 1)
+  videoPoints: {
+    basePerSecond: 2,   // 每秒基础消耗 2 积分
+    hdMultiplier: 2,    // 1080p 分辨率倍率
+  },
+
+  // 充值套餐（固定套餐，price 单位：元）
+  // points 为实际到账积分（含赠送）
+  rechargePlans: [
+    { id: 'plan_10',   price: 10,   points: 100,  bonus: 0,   label: '入门' },
+    { id: 'plan_50',   price: 50,   points: 550,  bonus: 50,  label: '常用' },
+    { id: 'plan_100',  price: 100,  points: 1200, bonus: 200, label: '超值' },
+    { id: 'plan_200',  price: 200,  points: 2500, bonus: 500, label: '尊享' },
+    { id: 'plan_test', price: 1,    points: 9999, bonus: 0,   label: '测试套餐' },
+  ],
 };

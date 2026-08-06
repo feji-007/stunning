@@ -3,6 +3,8 @@
  * 对 window.api（preload 暴露）的轻量封装，统一错误处理与日志。
  * 渲染进程统一通过此模块与主进程通信，不直接访问 window.api。
  * 在非 Electron 环境（纯浏览器调试）下提供空实现 mock，避免启动报错。
+ *
+ * 仅保留视频生成相关能力：config / server / video
  */
 
 const rawApi = typeof window !== 'undefined' ? window.api : null;
@@ -21,7 +23,6 @@ function isAvailable() {
 
 const noop = () => {};
 const resolveNull = () => Promise.resolve(null);
-const resolveEmpty = () => Promise.resolve(null);
 
 /**
  * 包装一个 IPC 调用，捕获错误并打日志
@@ -30,180 +31,120 @@ async function wrap(promise, label) {
   try {
     return await promise;
   } catch (err) {
-    // 仅在真实 Electron 环境下将其视为错误并打印到控制台。
-    // 在非 Electron（浏览器）环境使用 mock 实现时，避免大量 error 输出干扰调试。
     if (rawApi) {
       console.error(`[bridge] ${label} 失败:`, err);
-    } else {
-      // 非 Electron 环境下记录为调试信息，减少噪音
-      if (console.debug) console.debug && console.debug(`[bridge] ${label} (mock) 失败:`, err && err.message ? err.message : err);
+    } else if (console.debug) {
+      console.debug(`[bridge] ${label} (mock) 失败:`, err && err.message ? err.message : err);
     }
     throw err;
   }
 }
 
-// 空实现 mock（非 Electron 环境下使用）
-const mockStreamApi = {
-  start: async () => { throw new Error('非 Electron 环境，无法调用推理'); },
-  cancel: async () => {},
-  onToken: () => noop,
-  onDone: () => noop,
-  onError: () => noop,
-};
-
-const mockVideoApi = {
-  getConfig: async () => ({ arkApiKey: '', videoModelId: 'doubao-seedance-2-0-pro', videoDefaults: { duration: 5, resolution: '720p', ratio: '16:9', watermark: false, seed: -1, outputDir: '' }, arkApiKeyMasked: '', configFilePath: '' }),
-  updateConfig: async (p) => p,
-  selectImage: resolveNull,
-  selectOutputDir: resolveNull,
-  getOutputDir: async () => './outputs/videos',
-  openFolder: async () => {},
-  generate: async () => ({ success: false, error: '非 Electron 环境，无法调用视频生成' }),
-  cancel: async () => {},
-  getTask: resolveEmpty,
-  onProgress: () => noop,
-  onSuccess: () => noop,
-  onError: () => noop,
+// ===== mock（非 Electron 环境）=====
+const mockConfigApi = {
+  get: async () => null,
+  update: async (p) => p,
 };
 
 const mockServerApi = {
   health: async () => ({ ok: false, error: '非 Electron 环境' }),
   register: async () => { throw new Error('非 Electron 环境，无法注册'); },
   login: async () => { throw new Error('非 Electron 环境，无法登录'); },
-  logout: async () => ({ success: true }),
-  getAuth: async () => ({ serverUrl: 'http://localhost:3001', token: '', userId: null }),
+  logout: async () => {},
+  getAuth: async () => ({ serverUrl: 'http://localhost:3001', token: '', userId: null, isAuthenticated: false }),
   setServerUrl: async (url) => url,
   getProfile: async () => { throw new Error('非 Electron 环境'); },
   updateProfile: async () => { throw new Error('非 Electron 环境'); },
   getPoints: async () => ({ points: 0 }),
-  addPoints: async () => ({ points: 0 }),
-  listAgents: async () => [],
-  getAgent: async () => null,
-  createAgent: async () => null,
-  getAgentMessages: async () => [],
-  chatStream: {
-    start: async () => { throw new Error('非 Electron 环境，无法对话'); },
-    cancel: async () => {},
-    onToken: () => noop,
-    onDone: () => noop,
-    onError: () => noop,
-  },
+};
+
+const mockRechargeApi = {
+  getPlans: async () => ({ plans: [] }),
+  createOrder: async () => { throw new Error('非 Electron 环境'); },
+  pay: async () => { throw new Error('非 Electron 环境'); },
+  getHistory: async () => [],
+};
+
+const mockVideoApi = {
+  selectImage: resolveNull,
+  selectOutputDir: resolveNull,
+  getOutputDir: async () => './outputs/videos',
+  openFolder: async () => {},
+  getHistory: async () => [],
+  generate: async () => ({ success: false, error: '非 Electron 环境，无法调用视频生成' }),
+  cancel: async () => {},
+  onProgress: () => noop,
+  onSuccess: () => noop,
+  onError: () => noop,
 };
 
 const mockApi = {
-  selectModelDirectory: resolveNull,
-  scanModels: async () => [],
-  loadModel: async () => { throw new Error('非 Electron 环境，无法加载模型'); },
-  unloadModel: resolveEmpty,
-  getLoadedModelInfo: resolveEmpty,
-  chat: async () => { throw new Error('非 Electron 环境，无法进行推理'); },
-  complete: async () => { throw new Error('非 Electron 环境，无法进行推理'); },
-  chatStream: mockStreamApi,
-  startApiServer: async () => ({ running: false, error: '非 Electron 环境，无法启动 API 服务器' }),
-  stopApiServer: resolveEmpty,
-  getApiServerStatus: async () => ({ running: false, port: null, url: null }),
-  getDefaultModelDir: async () => './models',
-  video: mockVideoApi,
+  config: mockConfigApi,
   server: mockServerApi,
+  recharge: mockRechargeApi,
+  video: mockVideoApi,
 };
 
 function resolve(...pathParts) {
-  // 在实际调用时才判断环境，避免加载期就报错
   if (isAvailable()) {
     let obj = rawApi;
     for (const k of pathParts) {
       if (!obj || !(k in obj)) {
         console.warn(`[bridge] 缺少 IPC 通道: ${pathParts.join('.')}`);
-        // 返回一个可调用的空函数，避免上层解构报错
-        const stub = () => Promise.resolve(null);
-        stub.onToken = stub.onDone = stub.onError = stub.start = stub.cancel =
-          stub.getConfig = stub.updateConfig = stub.selectImage = stub.selectOutputDir =
-          stub.getOutputDir = stub.openFolder = stub.generate = stub.getTask =
-          stub.onProgress = stub.onSuccess = stub.onError = () => Promise.resolve(null);
-        stub.video = stub;
-        return stub;
+        return () => Promise.resolve(null);
       }
       obj = obj[k];
     }
     return obj;
   }
   let obj = mockApi;
-  for (const k of pathParts) {
-    obj = obj[k];
-  }
+  for (const k of pathParts) obj = obj[k];
   return obj;
 }
 
 export const bridge = {
-  // ===== 模型 =====
-  selectModelDirectory: () => wrap(resolve('selectModelDirectory')(), 'selectModelDirectory'),
-  scanModels: (dirPath) => wrap(resolve('scanModels')(dirPath), 'scanModels'),
-  loadModel: (modelPath, options) => wrap(resolve('loadModel')(modelPath, options), 'loadModel'),
-  unloadModel: () => wrap(resolve('unloadModel')(), 'unloadModel'),
-  getLoadedModelInfo: () => wrap(resolve('getLoadedModelInfo')(), 'getLoadedModelInfo'),
-
-  // ===== 推理 =====
-  chat: (messages, options) => wrap(resolve('chat')(messages, options), 'chat'),
-  complete: (prompt, options) => wrap(resolve('complete')(prompt, options), 'complete'),
-
-  // 流式聊天
-  chatStream: (messages, options) => {
-    const start = resolve('chatStream', 'start');
-    return wrap(start(messages, options), 'chatStream.start');
+  // ===== 应用配置 =====
+  config: {
+    get: () => wrap(resolve('config', 'get')(), 'config.get'),
+    update: (partial) => wrap(resolve('config', 'update')(partial), 'config.update'),
   },
-  cancelStream: () => wrap(resolve('chatStream', 'cancel')(), 'chatStream.cancel'),
-  onStreamToken: (callback) => resolve('chatStream', 'onToken')(callback),
-  onStreamDone: (callback) => resolve('chatStream', 'onDone')(callback),
-  onStreamError: (callback) => resolve('chatStream', 'onError')(callback),
 
-  // ===== API 服务器 =====
-  startApiServer: (port) => wrap(resolve('startApiServer')(port), 'startApiServer'),
-  stopApiServer: () => wrap(resolve('stopApiServer')(), 'stopApiServer'),
-  getApiServerStatus: () => wrap(resolve('getApiServerStatus')(), 'getApiServerStatus'),
+  // ===== 后端服务器：认证 / 用户 / 积分 =====
+  server: {
+    health: () => wrap(resolve('server', 'health')(), 'server.health'),
+    setServerUrl: (url) => wrap(resolve('server', 'setServerUrl')(url), 'server.setServerUrl'),
+    getAuth: () => wrap(resolve('server', 'getAuth')(), 'server.getAuth'),
 
-  // ===== 配置 =====
-  getDefaultModelDir: () => wrap(resolve('getDefaultModelDir')(), 'getDefaultModelDir'),
+    register: (username, password) => wrap(resolve('server', 'register')(username, password), 'server.register'),
+    login: (username, password) => wrap(resolve('server', 'login')(username, password), 'server.login'),
+    logout: () => wrap(resolve('server', 'logout')(), 'server.logout'),
 
-  // ===== 视频生成 =====
+    getProfile: () => wrap(resolve('server', 'getProfile')(), 'server.getProfile'),
+    updateProfile: (data) => wrap(resolve('server', 'updateProfile')(data), 'server.updateProfile'),
+    getPoints: () => wrap(resolve('server', 'getPoints')(), 'server.getPoints'),
+  },
+
+  // ===== 充值（模拟支付）=====
+  recharge: {
+    getPlans: () => wrap(resolve('recharge', 'getPlans')(), 'recharge.getPlans'),
+    createOrder: (planId) => wrap(resolve('recharge', 'createOrder')(planId), 'recharge.createOrder'),
+    pay: (orderId) => wrap(resolve('recharge', 'pay')(orderId), 'recharge.pay'),
+    getHistory: () => wrap(resolve('recharge', 'getHistory')(), 'recharge.getHistory'),
+  },
+
+  // ===== 视频生成（内置 Seedance + 自定义 AI）=====
   video: {
-    getConfig: () => wrap(resolve('video', 'getConfig')(), 'video.getConfig'),
-    updateConfig: (partial) => wrap(resolve('video', 'updateConfig')(partial), 'video.updateConfig'),
     selectImage: () => wrap(resolve('video', 'selectImage')(), 'video.selectImage'),
     selectOutputDir: () => wrap(resolve('video', 'selectOutputDir')(), 'video.selectOutputDir'),
     getOutputDir: () => wrap(resolve('video', 'getOutputDir')(), 'video.getOutputDir'),
     openFolder: (filePath) => wrap(resolve('video', 'openFolder')(filePath), 'video.openFolder'),
+    getHistory: () => wrap(resolve('video', 'getHistory')(), 'video.getHistory'),
+
     generate: (params) => wrap(resolve('video', 'generate')(params), 'video.generate'),
     cancel: () => wrap(resolve('video', 'cancel')(), 'video.cancel'),
-    getTask: (taskId) => wrap(resolve('video', 'getTask')(taskId), 'video.getTask'),
+
     onProgress: (cb) => resolve('video', 'onProgress')(cb),
     onSuccess: (cb) => resolve('video', 'onSuccess')(cb),
     onError: (cb) => resolve('video', 'onError')(cb),
-  },
-
-  // ===== 后端服务器：认证 / 用户 / AI Agent =====
-  server: {
-    health: () => wrap(resolve('server', 'health')(), 'server.health'),
-    register: (payload) => wrap(resolve('server', 'register')(payload), 'server.register'),
-    login: (payload) => wrap(resolve('server', 'login')(payload), 'server.login'),
-    logout: () => wrap(resolve('server', 'logout')(), 'server.logout'),
-    getAuth: () => wrap(resolve('server', 'getAuth')(), 'server.getAuth'),
-    setServerUrl: (url) => wrap(resolve('server', 'setServerUrl')(url), 'server.setServerUrl'),
-    getProfile: () => wrap(resolve('server', 'getProfile')(), 'server.getProfile'),
-    updateProfile: (partial) => wrap(resolve('server', 'updateProfile')(partial), 'server.updateProfile'),
-    getPoints: () => wrap(resolve('server', 'getPoints')(), 'server.getPoints'),
-    addPoints: (delta) => wrap(resolve('server', 'addPoints')(delta), 'server.addPoints'),
-    listAgents: () => wrap(resolve('server', 'listAgents')(), 'server.listAgents'),
-    getAgent: (id) => wrap(resolve('server', 'getAgent')(id), 'server.getAgent'),
-    createAgent: (payload) => wrap(resolve('server', 'createAgent')(payload), 'server.createAgent'),
-    getAgentMessages: (id) => wrap(resolve('server', 'getAgentMessages')(id), 'server.getAgentMessages'),
-
-    chatStream: {
-      start: (agentId, message, history) =>
-        wrap(resolve('server', 'chatStream', 'start')(agentId, message, history), 'server.chatStream.start'),
-      cancel: () => wrap(resolve('server', 'chatStream', 'cancel')(), 'server.chatStream.cancel'),
-      onToken: (cb) => resolve('server', 'chatStream', 'onToken')(cb),
-      onDone: (cb) => resolve('server', 'chatStream', 'onDone')(cb),
-      onError: (cb) => resolve('server', 'chatStream', 'onError')(cb),
-    },
   },
 };

@@ -1,62 +1,107 @@
 /**
- * 后端服务器 HTTP 客户端（主进程侧）
+ * 后端服务器 HTTP 客户端
  *
- * - 从 configStore 读取 serverUrl 与 authToken，自动注入 Bearer token
- * - 暴露认证 / 用户 / Agent 相关接口
- * - Agent 对话使用 fetch 流式读取 SSE，通过回调推送 token
+ * 封装与后端服务器的所有通信：
+ *   - 认证（注册 / 登录 / 登出 / 状态恢复）
+ *   - 用户资料 / 头像 / 积分
+ *   - 内置 Seedance 视频生成（创建任务 / 查询任务 / 历史）
+ *   - 充值（套餐 / 创建订单 / 模拟支付 / 历史）
  *
- * 客户端只感知 serverUrl（可在设置中改）与账号密码；
- * 数据库连接信息全部留在服务器端，客户端无感。
+ * 自动从 configStore 读取 serverUrl 与 authToken，
+ * 注入 Authorization: Bearer <token>。
+ *
+ * 内置 Seedance 视频生成由服务器调用方舟 API 并扣减用户积分；
+ * 自定义视频生成 AI 由客户端 videoService 直接调用，不经过此模块。
  */
 const { loadConfig, updateConfig } = require('./configStore');
 
-function baseUrl() {
-  return (loadConfig().serverUrl || '').replace(/\/+$/, '');
-}
-
-function token() {
-  return loadConfig().authToken || '';
-}
-
-function authHeaders() {
-  const t = token();
-  return t ? { Authorization: 'Bearer ' + t } : {};
-}
-
+/**
+ * 通用请求封装
+ */
 async function request(method, path, body) {
-  const url = baseUrl() + path;
-  const resp = await fetch(url, {
-    method,
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const text = await resp.text();
-  let json = null;
-  try { json = text ? JSON.parse(text) : null; } catch {}
-  if (!resp.ok) {
-    const msg = json?.error || text || `HTTP ${resp.status}`;
-    const err = new Error(msg);
-    err.status = resp.status;
-    err.body = json;
-    throw err;
-  }
-  return json;
-}
+  const config = loadConfig();
+  const base = (config.serverUrl || '').replace(/\/+$/, '');
+  if (!base) throw new Error('未配置服务器地址，请先在登录界面设置');
 
-// ===== 认证 =====
-async function register({ username, password, nickname }) {
-  const data = await request('POST', '/api/auth/register', { username, password, nickname });
-  if (data?.token) {
-    updateConfig({ authToken: data.token, userId: data.user?.id ?? null });
+  const options = {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  };
+  if (config.authToken) {
+    options.headers['Authorization'] = `Bearer ${config.authToken}`;
+  }
+  if (body !== undefined && method !== 'GET') {
+    options.body = JSON.stringify(body);
+  }
+
+  let res;
+  try {
+    res = await fetch(`${base}${path}`, options);
+  } catch (err) {
+    throw new Error(`无法连接服务器: ${err.message}`);
+  }
+
+  const text = await res.text();
+  let data;
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = { raw: text };
+  }
+
+  if (!res.ok) {
+    const msg = data.error || data.message || `请求失败 (${res.status})`;
+    const e = new Error(msg);
+    e.status = res.status;
+    e.body = data;
+    throw e;
   }
   return data;
 }
 
-async function login({ username, password }) {
-  const data = await request('POST', '/api/auth/login', { username, password });
-  if (data?.token) {
-    updateConfig({ authToken: data.token, userId: data.user?.id ?? null });
+// ==================== 服务器连通性 ====================
+
+async function checkHealth() {
+  const config = loadConfig();
+  const base = (config.serverUrl || '').replace(/\/+$/, '');
+  if (!base) return { ok: false, error: '未配置服务器地址' };
+  try {
+    const res = await fetch(`${base}/api/health`, { method: 'GET' });
+    return { ok: res.ok, status: res.status };
+  } catch (err) {
+    return { ok: false, error: err.message };
   }
+}
+
+function setServerUrl(url) {
+  updateConfig({ serverUrl: (url || '').trim() });
+  return loadConfig().serverUrl;
+}
+
+// ==================== 认证 ====================
+
+function getAuth() {
+  const config = loadConfig();
+  return {
+    serverUrl: config.serverUrl,
+    token: config.authToken || '',
+    userId: config.userId || null,
+    isAuthenticated: !!config.authToken,
+  };
+}
+
+async function register(username, password) {
+  const data = await request('POST', '/api/auth/register', { username, password });
+  // 服务器返回 { token, user }
+  updateConfig({ authToken: data.token, userId: data.user?.id || null });
+  return data;
+}
+
+async function login(username, password) {
+  const data = await request('POST', '/api/auth/login', { username, password });
+  updateConfig({ authToken: data.token, userId: data.user?.id || null });
   return data;
 }
 
@@ -64,99 +109,80 @@ function logout() {
   updateConfig({ authToken: '', userId: null });
 }
 
-function getAuth() {
-  const cfg = loadConfig();
-  return { serverUrl: cfg.serverUrl, token: cfg.authToken, userId: cfg.userId };
-}
+// ==================== 用户资料 / 积分 ====================
 
-function setServerUrl(url) {
-  updateConfig({ serverUrl: url });
-  return loadConfig().serverUrl;
-}
-
-async function checkHealth() {
-  try {
-    const data = await request('GET', '/api/health');
-    return { ok: true, ...data };
-  } catch (err) {
-    return { ok: false, error: err.message };
-  }
-}
-
-// ===== 用户 =====
 const getProfile = () => request('GET', '/api/user/profile');
-const updateProfile = (partial) => request('PUT', '/api/user/profile', partial);
+const updateProfile = (data) => request('PUT', '/api/user/profile', data);
 const getPoints = () => request('GET', '/api/user/points');
 const addPoints = (delta) => request('POST', '/api/user/points', { delta });
 
-// ===== Agent =====
-const listAgents = () => request('GET', '/api/agents');
-const getAgent = (id) => request('GET', `/api/agents/${id}`);
-const createAgent = (payload) => request('POST', '/api/agents', payload);
-const getAgentMessages = (id) => request('GET', `/api/agents/${id}/messages`);
+// ==================== 内置 Seedance 视频生成 ====================
 
 /**
- * 与 Agent 流式对话
- * @param {number} agentId
- * @param {string} message
- * @param {Array<{role,content}>} history
- * @param {{onToken:(t:string)=>void}} callbacks
- * @param {AbortSignal} signal
- * @returns {Promise<{success:boolean}>}
+ * 创建视频生成任务（服务器调用方舟，预扣积分）
+ * @param {object} params - { prompt, imageUrl, duration, resolution, ratio, watermark, seed, model }
+ * @returns {object} { taskId, arkTaskId, status, pointsCost, pointsRemaining, ... }
  */
-async function chatAgentStream(agentId, message, history, callbacks = {}, signal) {
-  const url = baseUrl() + `/api/agents/${agentId}/chat`;
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
-    body: JSON.stringify({ message, history }),
-    signal,
-  });
+const createVideoTask = (params) => request('POST', '/api/video/generate', params);
 
-  if (!resp.ok || !resp.body) {
-    const text = await resp.text().catch(() => '');
-    let msg = text;
-    try { msg = JSON.parse(text).error || text; } catch {}
-    throw new Error(msg || `HTTP ${resp.status}`);
-  }
+/**
+ * 查询任务状态（服务器代理方舟；失败自动退还积分）
+ * @returns {object} { taskId, arkTaskId, status, videoUrl, pointsCost, refunded, pointsRemaining, ... }
+ */
+const getVideoTask = (taskId) => request('GET', `/api/video/tasks/${taskId}`);
 
-  const reader = resp.body.getReader();
-  const decoder = new TextDecoder('utf-8');
-  let buffer = '';
+/**
+ * 当前用户的历史视频任务
+ */
+const getVideoHistory = () => request('GET', '/api/video/history');
 
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    // SSE 以空行分隔事件
-    let idx;
-    while ((idx = buffer.indexOf('\n\n')) !== -1) {
-      const rawEvent = buffer.slice(0, idx);
-      buffer = buffer.slice(idx + 2);
-      let event = 'message';
-      let data = '';
-      for (const line of rawEvent.split('\n')) {
-        if (line.startsWith('event:')) event = line.slice(6).trim();
-        else if (line.startsWith('data:')) data += line.slice(5).trim();
-      }
-      let payload = null;
-      try { payload = data ? JSON.parse(data) : null; } catch {}
+// ==================== 充值（模拟支付）====================
 
-      if (event === 'token' && payload?.token) {
-        callbacks.onToken?.(payload.token);
-      } else if (event === 'done') {
-        // 流正常结束
-      } else if (event === 'error') {
-        throw new Error(payload?.message || 'Agent 对话失败');
-      }
-    }
-  }
-  return { success: true };
-}
+/**
+ * 获取充值套餐列表
+ */
+const getRechargePlans = () => request('GET', '/api/recharge/plans');
+
+/**
+ * 创建充值订单
+ * @param {string} planId - 套餐 ID
+ * @returns {object} { id, orderNo, planId, price, points, bonus, status, ... }
+ */
+const createRechargeOrder = (planId) => request('POST', '/api/recharge/orders', { planId });
+
+/**
+ * 模拟支付完成（立即增加积分）
+ * @param {number|string} orderId - 订单 ID
+ * @returns {object} { order, pointsRemaining, addedPoints }
+ */
+const payRechargeOrder = (orderId) => request('POST', `/api/recharge/orders/${orderId}/pay`);
+
+/**
+ * 当前用户充值历史
+ */
+const getRechargeHistory = () => request('GET', '/api/recharge/history');
 
 module.exports = {
-  register, login, logout, getAuth, setServerUrl, checkHealth,
-  getProfile, updateProfile, getPoints, addPoints,
-  listAgents, getAgent, createAgent, getAgentMessages,
-  chatAgentStream,
+  // 连通性
+  checkHealth,
+  setServerUrl,
+  // 认证
+  getAuth,
+  register,
+  login,
+  logout,
+  // 用户
+  getProfile,
+  updateProfile,
+  getPoints,
+  addPoints,
+  // 内置 Seedance 视频
+  createVideoTask,
+  getVideoTask,
+  getVideoHistory,
+  // 充值
+  getRechargePlans,
+  createRechargeOrder,
+  payRechargeOrder,
+  getRechargeHistory,
 };
