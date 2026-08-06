@@ -4,7 +4,7 @@
  * 提供：
  *   - 用户认证（注册 / 登录，JWT）
  *   - 用户资料 / 头像 / 积分
- *   - AI Agent 管理 + 流式对话（调用 OpenAI 兼容 LLM）
+ *   - 内置 Seedance 视频生成（服务器持有方舟 Key，消耗用户积分）
  *   - SQLite 数据库（部署在服务器上，客户端无感）
  *
  * 启动：  cd server && npm install && npm start
@@ -13,7 +13,7 @@ const express = require('express');
 const cors = require('cors');
 const config = require('./config');
 
-// 初始化数据库（建表 + 种子）
+// 初始化数据库（建表）
 require('./db');
 
 const app = express();
@@ -29,7 +29,11 @@ app.get('/api/health', (_req, res) => {
 // 路由挂载
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/user', require('./routes/user'));
-app.use('/api/agents', require('./routes/agent'));
+app.use('/api/video', require('./routes/video'));
+app.use('/api/recharge', require('./routes/recharge'));
+
+// 管理后台 API
+app.use('/api/admin', require('./routes/admin'));
 
 // 统一错误处理
 app.use((err, _req, res, _next) => {
@@ -40,5 +44,8 @@ app.use((err, _req, res, _next) => {
 app.listen(config.port, () => {
   console.log(`[stunning-server] 已启动: http://localhost:${config.port}`);
   console.log(`[stunning-server] 数据库: ${config.dbPath}`);
-  console.log(`[stunning-server] LLM 端点: ${config.llm.baseURL}`);
+  console.log(`[stunning-server] 内置 Seedance: ${config.ark.baseURL} (模型 ${config.ark.defaultModel})`);
+  if (!config.ark.apiKey) {
+    console.warn('[stunning-server] ⚠️  未配置 ARK_API_KEY，内置 Seedance 视频生成将不可用');
+  }
 });

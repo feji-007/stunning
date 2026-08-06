@@ -1,21 +1,22 @@
 import { useState, useRef, useEffect } from 'react';
 import { useStore } from '../store/useStore';
 import {
-  User, Coins, LogOut, ChevronDown, Camera, Edit3, Save, X,
+  User, Coins, LogOut, ChevronDown, Camera, Edit3, Save, X, Plus,
 } from 'lucide-react';
+import RechargeModal from './RechargeModal';
 
 /**
  * 顶栏右上角用户菜单
- * 展示：头像 / 昵称 / 积分；下拉：编辑资料（昵称、头像）、退出登录
+ * 展示：头像 / 昵称 / 积分；下拉：充值、编辑资料（昵称、头像）、退出登录
  */
 export default function UserMenu() {
   const user = useStore((s) => s.user);
   const logout = useStore((s) => s.logout);
   const updateProfile = useStore((s) => s.updateProfile);
-  const refreshProfile = useStore((s) => s.refreshProfile);
 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [showRecharge, setShowRecharge] = useState(false);
   const [nickname, setNickname] = useState(user?.nickname || '');
   const [avatar, setAvatar] = useState(user?.avatar || '');
   const [saving, setSaving] = useState(false);
@@ -77,6 +78,12 @@ export default function UserMenu() {
     await logout();
   };
 
+  // 打开充值弹窗（关闭下拉菜单）
+  const handleOpenRecharge = () => {
+    setOpen(false);
+    setShowRecharge(true);
+  };
+
   return (
     <div className="user-menu" ref={menuRef}>
       <button
@@ -91,9 +98,14 @@ export default function UserMenu() {
           )}
         </div>
         <span className="user-menu-name">{user?.nickname || user?.username}</span>
-        <span className="user-menu-points">
+        <span
+          className="user-menu-points user-menu-points--clickable"
+          onClick={(e) => { e.stopPropagation(); handleOpenRecharge(); }}
+          title="点击充值"
+        >
           <Coins size={12} />
           {user?.points ?? 0}
+          <Plus size={11} className="user-menu-points-add" />
         </span>
         <ChevronDown size={14} className={`user-menu-chevron ${open ? 'user-menu-chevron--open' : ''}`} />
       </button>
@@ -123,9 +135,17 @@ export default function UserMenu() {
                   <span className="user-menu-stat-label">积分</span>
                   <span className="user-menu-stat-value">{user?.points ?? 0}</span>
                 </div>
+                <button className="user-menu-recharge-btn" onClick={handleOpenRecharge}>
+                  <Plus size={12} />
+                  <span>充值</span>
+                </button>
               </div>
 
               <div className="user-menu-actions">
+                <button className="user-menu-action" onClick={handleOpenRecharge}>
+                  <Coins size={14} />
+                  <span>积分充值</span>
+                </button>
                 <button className="user-menu-action" onClick={() => setEditing(true)}>
                   <Edit3 size={14} />
                   <span>编辑资料</span>
@@ -202,6 +222,9 @@ export default function UserMenu() {
           )}
         </div>
       )}
+
+      {/* 充值弹窗 */}
+      <RechargeModal open={showRecharge} onClose={() => setShowRecharge(false)} />
     </div>
   );
 }

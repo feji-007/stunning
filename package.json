@@ -1,7 +1,7 @@
 {
   "name": "stunning",
-  "version": "1.0.0",
-  "description": "绝色（Stunning）— 本地大模型推理 + AI 视频生成桌面应用，基于 Electron + React",
+  "version": "2.0.0",
+  "description": "绝色（Stunning）— AI 视频生成桌面应用，基于 Electron + React（内置 Seedance 2.0 + 自定义视频生成 AI）",
   "main": "electron/main.js",
   "author": "",
   "license": "MIT",
@@ -15,14 +15,8 @@
     "dist": "vite build && electron-builder"
   },
   "dependencies": {
-    "cors": "^2.8.5",
-    "express": "^4.19.2",
-    "node-llama-cpp": "^3.1.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-markdown": "^9.0.1",
-    "react-syntax-highlighter": "^15.5.0",
-    "remark-gfm": "^4.0.0",
     "zustand": "^4.5.4",
     "lucide-react": "^0.439.0",
     "uuid": "^10.0.0"

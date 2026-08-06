@@ -1,206 +1,346 @@
 import { useState } from 'react';
 import { useStore } from '../store/useStore';
+import { bridge } from '../ipc/bridge';
 import {
-  Settings, RotateCcw, Thermometer, Hash, Layers, Sliders,
-  Key, Film, Save, FolderOpen, Check, ExternalLink,
+  Settings, Key, Film, Save, FolderOpen, Check, ExternalLink,
+  Sparkles, Wand2, Coins, Cpu, Loader2, CheckCircle2, AlertCircle,
 } from 'lucide-react';
 
 export default function SettingsPanel() {
-  const params = useStore((s) => s.params);
-  const setParam = useStore((s) => s.setParam);
-  const resetParams = useStore((s) => s.resetParams);
   const appConfig = useStore((s) => s.appConfig);
+  const user = useStore((s) => s.user);
   const saveAppConfig = useStore((s) => s.saveAppConfig);
   const selectVideoOutputDir = useStore((s) => s.selectVideoOutputDir);
   const setActiveView = useStore((s) => s.setActiveView);
 
-  // 视频 API Key 本地输入态（避免每次按键都写盘）
-  const [apiKeyInput, setApiKeyInput] = useState('');
+  // 自定义 AI 本地输入态（避免每次按键都写盘）
+  const [baseURLInput, setBaseURLInput] = useState(appConfig?.customVideo?.baseURL || '');
+  const [apiKeyInput, setApiKeyInput] = useState(appConfig?.customVideo?.apiKey || '');
+  const [modelIdInput, setModelIdInput] = useState(appConfig?.customVideo?.modelId || '');
   const [savedFlash, setSavedFlash] = useState(false);
+
+  // ComfyUI 本地输入态
+  const [comfyuiBaseInput, setComfyuiBaseInput] = useState(appConfig?.comfyui?.baseURL || '');
+  const [comfyuiWorkflowInput, setComfyuiWorkflowInput] = useState(appConfig?.comfyui?.workflow || '');
+  const [comfyuiSavedFlash, setComfyuiSavedFlash] = useState(false);
+  const [comfyuiTestState, setComfyuiTestState] = useState('idle'); // 'idle' | 'testing' | 'ok' | 'fail'
+  const [comfyuiTestMsg, setComfyuiTestMsg] = useState('');
 
   const videoDefaults = appConfig?.videoDefaults || {};
   const outputDir = videoDefaults.outputDir || '';
+  const provider = appConfig?.videoProvider || 'seedance';
 
-  // 滑块参数配置
-  const sliders = [
-    { key: 'temperature', label: 'Temperature', icon: Thermometer, min: 0, max: 2, step: 0.05, hint: '控制生成随机性，越高越有创造性' },
-    { key: 'topP', label: 'Top P', icon: Sliders, min: 0, max: 1, step: 0.01, hint: '核采样概率阈值' },
-    { key: 'topK', label: 'Top K', icon: Hash, min: 0, max: 100, step: 1, hint: '候选 token 数量上限' },
-    { key: 'minP', label: 'Min P', icon: Sliders, min: 0, max: 1, step: 0.01, hint: '最小概率过滤阈值' },
-    { key: 'repeatPenalty', label: 'Repeat Penalty', icon: RotateCcw, min: 1, max: 2, step: 0.01, hint: '重复惩罚系数，抑制重复输出' },
-  ];
+  const handleSaveCustom = async () => {
+    await saveAppConfig({
+      customVideo: {
+        baseURL: baseURLInput.trim(),
+        apiKey: apiKeyInput.trim(),
+        modelId: modelIdInput.trim() || 'doubao-seedance-2-0-pro',
+      },
+    });
+    setSavedFlash(true);
+    setTimeout(() => setSavedFlash(false), 1800);
+  };
 
-  const numInputs = [
-    { key: 'maxTokens', label: 'Max Tokens', hint: '最大生成 token 数 (-1 = 不限制)', min: -1, max: 32768, step: 1 },
-    { key: 'contextSize', label: 'Context Size', hint: '上下文窗口大小（加载模型时生效）', min: 512, max: 32768, step: 512 },
-    { key: 'gpuLayers', label: 'GPU Layers', hint: '卸载到 GPU 的层数 (0 = 纯 CPU)', min: 0, max: 100, step: 1 },
-  ];
+  const handleSelectProvider = async (p) => {
+    await saveAppConfig({ videoProvider: p });
+  };
+
+  const handleSaveComfyui = async () => {
+    await saveAppConfig({
+      comfyui: {
+        baseURL: comfyuiBaseInput.trim(),
+        workflow: comfyuiWorkflowInput,
+      },
+    });
+    setComfyuiSavedFlash(true);
+    setTimeout(() => setComfyuiSavedFlash(false), 1800);
+  };
+
+  const handleTestComfyui = async () => {
+    setComfyuiTestState('testing');
+    setComfyuiTestMsg('');
+    try {
+      const res = await bridge.video.testComfyui(comfyuiBaseInput.trim());
+      const dev = res?.devices?.[0];
+      const devName = dev?.name ? `${dev.name}（${dev.type}）` : '';
+      setComfyuiTestState('ok');
+      setComfyuiTestMsg(devName ? `已连接：${devName}` : '已连接到 ComfyUI 服务');
+    } catch (err) {
+      setComfyuiTestState('fail');
+      setComfyuiTestMsg(err?.message || '连接失败');
+    }
+  };
+
+  // 校验 ComfyUI 工作流是否为合法 JSON
+  const workflowJsonValid = (() => {
+    const s = comfyuiWorkflowInput.trim();
+    if (!s) return true; // 空允许保存，生成时再校验
+    try { JSON.parse(s); return true; } catch { return false; }
+  })();
 
   return (
     <div className="panel settings-panel">
       <div className="panel-header">
         <Settings size={20} />
-        <h1 className="panel-title">推理设置</h1>
-        <button className="btn btn-secondary settings-reset-btn" onClick={resetParams}>
-          <RotateCcw size={14} />
-          <span>重置默认</span>
-        </button>
+        <h1 className="panel-title">设置</h1>
       </div>
 
-      {/* 视频生成 API 配置 */}
+      {/* 视频生成提供商选择 */}
       <div className="settings-section video-api-section">
         <h3 className="settings-section-title">
           <Film size={16} />
-          视频生成 API（Seedance 2.0）
+          视频生成提供商
         </h3>
+        <p className="field-hint" style={{ marginBottom: 12 }}>
+          选择视频生成方式：内置 Seedance（消耗积分）、自定义视频生成 AI（自带 Key）或本地 ComfyUI 部署（免费）。
+        </p>
 
-        <div className="video-apikey-row">
-          <label className="field-label">
-            <Key size={13} />
-            方舟 API Key
-          </label>
-          <div className="video-apikey-input-row">
-            <input
-              type="password"
-              className="video-apikey-input"
-              value={apiKeyInput}
-              onChange={(e) => setApiKeyInput(e.target.value)}
-              placeholder={appConfig?.arkApiKeyMasked || '输入方舟 API Key'}
-            />
-            <button
-              className="btn btn-primary"
-              onClick={async () => {
-                if (!apiKeyInput.trim()) return;
-                await saveAppConfig({ arkApiKey: apiKeyInput.trim() });
-                setApiKeyInput('');
-                setSavedFlash(true);
-                setTimeout(() => setSavedFlash(false), 1800);
-              }}
-              disabled={!apiKeyInput.trim()}
-            >
-              {savedFlash ? <Check size={15} /> : <Save size={15} />}
-              <span>{savedFlash ? '已保存' : '保存'}</span>
-            </button>
+        <div className="video-mode-tabs" style={{ marginBottom: 16 }}>
+          <button
+            className={`mode-tab ${provider === 'seedance' ? 'mode-tab--active' : ''}`}
+            onClick={() => handleSelectProvider('seedance')}
+          >
+            <Sparkles size={15} />
+            <span>内置 Seedance</span>
+          </button>
+          <button
+            className={`mode-tab ${provider === 'custom' ? 'mode-tab--active' : ''}`}
+            onClick={() => handleSelectProvider('custom')}
+          >
+            <Wand2 size={15} />
+            <span>自定义 AI</span>
+          </button>
+          <button
+            className={`mode-tab ${provider === 'comfyui' ? 'mode-tab--active' : ''}`}
+            onClick={() => handleSelectProvider('comfyui')}
+          >
+            <Cpu size={15} />
+            <span>ComfyUI 本地</span>
+          </button>
+        </div>
+
+        {/* 内置 Seedance 说明 */}
+        {provider === 'seedance' && (
+          <div className="settings-section">
+            <div className="video-apikey-banner">
+              <Coins size={16} />
+              <span>
+                内置 Seedance 2.0 无需配置 API Key，由服务器调用方舟 API。
+                当前剩余 <strong>{user?.points ?? 0}</strong> 积分。
+              </span>
+            </div>
+            <ul className="settings-info-list" style={{ marginTop: 12 }}>
+              <li>积分规则：5 秒 720p = 10 积分，5 秒 1080p = 20 积分，10 秒翻倍。</li>
+              <li>生成失败会自动退还已扣除的积分。</li>
+              <li>积分由服务器统一管理，注册账号即赠送 100 积分。</li>
+            </ul>
           </div>
-          {appConfig?.arkApiKey && (
-            <p className="field-hint">
-              当前已配置: <code className="inline-code">{appConfig.arkApiKeyMasked}</code>
+        )}
+
+        {/* 自定义 AI 配置 */}
+        {provider === 'custom' && (
+          <div className="settings-section">
+            <p className="field-hint" style={{ marginBottom: 12 }}>
+              填写方舟 API 兼容的视频生成端点。使用你自己的 API Key，调用不消耗积分。
             </p>
-          )}
-          <p className="field-hint">
-            在
-            <a
-              className="settings-link"
-              href="#"
-              onClick={(e) => { e.preventDefault(); window.open('https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey', '_blank'); }}
-            >
-              火山引擎方舟控制台 <ExternalLink size={11} />
-            </a>
-            创建 API Key，并确保已开通「Doubao-Seedance-2.0」模型。
-          </p>
-        </div>
 
-        <div className="video-output-row">
-          <label className="field-label">视频保存目录</label>
-          <div className="model-dir-row">
-            <input className="model-dir-input" value={outputDir} readOnly placeholder="默认: ~/Videos/stunning" />
-            <button className="btn btn-secondary" onClick={selectVideoOutputDir}>
-              <FolderOpen size={15} />
-              <span>选择</span>
-            </button>
-          </div>
-        </div>
-
-        <button
-          className="btn btn-secondary video-goto-studio"
-          onClick={() => setActiveView('video')}
-        >
-          <Film size={15} />
-          <span>前往视频工作室 →</span>
-        </button>
-      </div>
-
-      {/* 系统提示词 */}
-      <div className="settings-section">
-        <label className="field-label">系统提示词 (System Prompt)</label>
-        <textarea
-          className="settings-textarea"
-          value={params.systemPrompt}
-          onChange={(e) => setParam('systemPrompt', e.target.value)}
-          rows={4}
-          placeholder="设定助手的行为和角色..."
-        />
-        <p className="field-hint">引导模型扮演特定角色或遵循特定规则</p>
-      </div>
-
-      {/* 滑块参数 */}
-      <div className="settings-section">
-        <h3 className="settings-section-title">采样参数</h3>
-        <div className="settings-sliders">
-          {sliders.map((slider) => {
-            const Icon = slider.icon;
-            return (
-              <div key={slider.key} className="slider-row">
-                <div className="slider-header">
-                  <div className="slider-label">
-                    <Icon size={15} />
-                    <span>{slider.label}</span>
-                  </div>
-                  <span className="slider-value">{Number(params[slider.key]).toFixed(2)}</span>
-                </div>
-                <input
-                  type="range"
-                  className="slider"
-                  min={slider.min}
-                  max={slider.max}
-                  step={slider.step}
-                  value={params[slider.key]}
-                  onChange={(e) => setParam(slider.key, parseFloat(e.target.value))}
-                />
-                <p className="slider-hint">{slider.hint}</p>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* 数值输入参数 */}
-      <div className="settings-section">
-        <h3 className="settings-section-title">
-          <Layers size={16} />
-          模型参数
-        </h3>
-        <div className="settings-numbers">
-          {numInputs.map((field) => (
-            <div key={field.key} className="number-input-row">
-              <div className="number-input-label">
-                <label>{field.label}</label>
-                <p className="field-hint">{field.hint}</p>
-              </div>
+            <div className="video-apikey-row">
+              <label className="field-label">Base URL</label>
               <input
-                type="number"
-                className="number-input"
-                value={params[field.key]}
-                onChange={(e) => setParam(field.key, parseInt(e.target.value) || 0)}
-                min={field.min}
-                max={field.max}
-                step={field.step}
+                type="text"
+                className="video-apikey-input"
+                value={baseURLInput}
+                onChange={(e) => setBaseURLInput(e.target.value)}
+                placeholder="https://ark.cn-beijing.volces.com/api/v3"
               />
             </div>
-          ))}
+
+            <div className="video-apikey-row">
+              <label className="field-label">
+                <Key size={13} />
+                API Key
+              </label>
+              <input
+                type="password"
+                className="video-apikey-input"
+                value={apiKeyInput}
+                onChange={(e) => setApiKeyInput(e.target.value)}
+                placeholder={appConfig?.customVideo?.apiKey ? '已配置（重新输入可覆盖）' : '输入方舟 API Key'}
+              />
+              {appConfig?.customVideo?.apiKey && (
+                <p className="field-hint">
+                  当前已配置: <code className="inline-code">
+                    {appConfig.customVideo.apiKey.slice(0, 4)}****{appConfig.customVideo.apiKey.slice(-4)}
+                  </code>
+                </p>
+              )}
+            </div>
+
+            <div className="video-apikey-row">
+              <label className="field-label">模型 ID</label>
+              <input
+                type="text"
+                className="video-apikey-input"
+                value={modelIdInput}
+                onChange={(e) => setModelIdInput(e.target.value)}
+                placeholder="doubao-seedance-2-0-pro"
+              />
+              <p className="field-hint">火山引擎方舟的视频生成模型 ID，如 doubao-seedance-2-0-pro</p>
+            </div>
+
+            <div className="video-apikey-input-row" style={{ marginTop: 12 }}>
+              <button
+                className="btn btn-primary"
+                onClick={handleSaveCustom}
+                disabled={!baseURLInput.trim() || !apiKeyInput.trim()}
+              >
+                {savedFlash ? <Check size={15} /> : <Save size={15} />}
+                <span>{savedFlash ? '已保存' : '保存配置'}</span>
+              </button>
+            </div>
+
+            <p className="field-hint" style={{ marginTop: 12 }}>
+              在
+              <a
+                className="settings-link"
+                href="#"
+                onClick={(e) => { e.preventDefault(); window.open('https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey', '_blank'); }}
+              >
+                火山引擎方舟控制台 <ExternalLink size={11} />
+              </a>
+              创建 API Key，并确保已开通视频生成模型。
+            </p>
+          </div>
+        )}
+
+        {/* ComfyUI 本地部署配置 */}
+        {provider === 'comfyui' && (
+          <div className="settings-section">
+            <p className="field-hint" style={{ marginBottom: 12 }}>
+              连接本地运行的 ComfyUI 服务，使用你自定义的工作流生成视频。完全免费，不消耗积分。
+            </p>
+
+            <div className="video-apikey-row">
+              <label className="field-label">ComfyUI 服务地址</label>
+              <div className="comfyui-url-row">
+                <input
+                  type="text"
+                  className="video-apikey-input"
+                  value={comfyuiBaseInput}
+                  onChange={(e) => { setComfyuiBaseInput(e.target.value); setComfyuiTestState('idle'); setComfyuiTestMsg(''); }}
+                  placeholder="http://127.0.0.1:8188"
+                />
+                <button
+                  className="btn btn-secondary"
+                  onClick={handleTestComfyui}
+                  disabled={!comfyuiBaseInput.trim() || comfyuiTestState === 'testing'}
+                >
+                  {comfyuiTestState === 'testing' ? <Loader2 size={15} className="spin" /> : <Cpu size={15} />}
+                  <span>{comfyuiTestState === 'testing' ? '测试中' : '测试连接'}</span>
+                </button>
+              </div>
+              <p className="field-hint">默认 ComfyUI 启动后的本地地址，无需 API Key</p>
+              {comfyuiTestState === 'ok' && (
+                <p className="field-hint comfyui-test-ok">
+                  <CheckCircle2 size={13} />
+                  <span>{comfyuiTestMsg}</span>
+                </p>
+              )}
+              {comfyuiTestState === 'fail' && (
+                <p className="field-hint comfyui-test-fail">
+                  <AlertCircle size={13} />
+                  <span>{comfyuiTestMsg}</span>
+                </p>
+              )}
+            </div>
+
+            <div className="video-apikey-row">
+              <label className="field-label">工作流模板（API 格式 JSON）</label>
+              <textarea
+                className="comfyui-workflow-input"
+                value={comfyuiWorkflowInput}
+                onChange={(e) => setComfyuiWorkflowInput(e.target.value)}
+                rows={14}
+                spellCheck={false}
+                placeholder={'{\n  "3": { "class_type": "KSampler", "inputs": { "seed": "{{seed}}", ... } },\n  "6": { "class_type": "CLIPTextEncode", "inputs": { "text": "{{prompt}}" } },\n  "10": { "class_type": "LoadImage", "inputs": { "image": "{{image_filename}}" } }\n}'}
+              />
+              {!workflowJsonValid && (
+                <p className="field-hint comfyui-test-fail">
+                  <AlertCircle size={13} />
+                  <span>工作流不是合法的 JSON，请检查格式（从 ComfyUI「保存（API 格式）」导出）</span>
+                </p>
+              )}
+              <p className="field-hint">
+                在 ComfyUI 中加载工作流后，通过「设置 → 启用 Dev Mode → 保存（API 格式）」导出 JSON 粘贴至此。
+                支持占位符（运行时自动替换）：
+                <code className="inline-code">{'{{prompt}}'}</code>
+                <code className="inline-code">{'{{negative_prompt}}'}</code>
+                <code className="inline-code">{'{{image_filename}}'}</code>
+                <code className="inline-code">{'{{width}}'}</code>
+                <code className="inline-code">{'{{height}}'}</code>
+                <code className="inline-code">{'{{duration}}'}</code>
+                <code className="inline-code">{'{{seed}}'}</code>
+              </p>
+            </div>
+
+            <div className="video-apikey-input-row" style={{ marginTop: 12 }}>
+              <button
+                className="btn btn-primary"
+                onClick={handleSaveComfyui}
+                disabled={!comfyuiBaseInput.trim() || !workflowJsonValid}
+              >
+                {comfyuiSavedFlash ? <Check size={15} /> : <Save size={15} />}
+                <span>{comfyuiSavedFlash ? '已保存' : '保存配置'}</span>
+              </button>
+            </div>
+
+            <p className="field-hint" style={{ marginTop: 12 }}>
+              参考图（图生视频）会自动上传到 ComfyUI input 目录，文件名通过
+              <code className="inline-code">{'{{image_filename}}'}</code>
+              注入工作流。分辨率与比例会换算为
+              <code className="inline-code">{'{{width}}'}</code>
+              <code className="inline-code">{'{{height}}'}</code>
+              像素值。
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* 视频保存目录 */}
+      <div className="settings-section">
+        <h3 className="settings-section-title">
+          <FolderOpen size={16} />
+          视频保存目录
+        </h3>
+        <div className="model-dir-row">
+          <input className="model-dir-input" value={outputDir} readOnly placeholder="默认: ~/Videos/stunning" />
+          <button className="btn btn-secondary" onClick={selectVideoOutputDir}>
+            <FolderOpen size={15} />
+            <span>选择</span>
+          </button>
         </div>
       </div>
 
-      {/* 参数说明 */}
+      {/* 说明 */}
       <div className="settings-section settings-info">
         <h3 className="settings-section-title">说明</h3>
         <ul className="settings-info-list">
-          <li>「Context Size」与「GPU Layers」仅在加载模型时生效，修改后需重新加载模型。</li>
-          <li>采样参数（Temperature、Top P 等）在每次发送消息时实时生效。</li>
-          <li>Max Tokens 设为 -1 表示不限制生成长度，模型会自动判断何时停止。</li>
-          <li>所有推理均在本地完成，数据不会离开你的设备。</li>
+          <li>内置 Seedance 由服务器调用方舟 API，消耗积分；生成失败自动退还。</li>
+          <li>自定义 AI 由客户端直接调用你配置的端点，不消耗积分。</li>
+          <li>ComfyUI 本地部署由客户端直接调用本地服务，完全免费，不消耗积分。</li>
+          <li>方舟两种模式均遵循异步任务格式（POST /contents/generations/tasks）。</li>
+          <li>生成的视频会自动下载到「视频保存目录」。</li>
         </ul>
       </div>
+
+      <button
+        className="btn btn-secondary video-goto-studio"
+        onClick={() => setActiveView('video')}
+      >
+        <Film size={15} />
+        <span>前往视频工作室 →</span>
+      </button>
     </div>
   );
 }

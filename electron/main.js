@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow } = require('electron');
 const path = require('path');
 const { registerIpcHandlers } = require('./ipc-handlers');
 
@@ -34,8 +34,8 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
-  // 注册所有 IPC 处理器（推理引擎、模型管理、API 服务器）
-  await registerIpcHandlers(ipcMain);
+  // 注册所有 IPC 处理器（配置 / 服务器 / 视频生成）
+  await registerIpcHandlers();
   createWindow();
 
   app.on('activate', () => {
@@ -51,17 +51,10 @@ app.on('window-all-closed', () => {
   }
 });
 
-// 应用退出前清理推理引擎与 API 服务器（best-effort，失败也不阻塞退出）
-app.on('before-quit', async (event) => {
-  event.preventDefault();
+// 应用退出前取消正在进行的视频生成（best-effort）
+app.on('before-quit', () => {
   try {
-    const { getEngine } = require('./inference/llamaEngine');
-    const engine = getEngine();
-    if (engine) await engine.dispose();
+    const { cancel } = require('./videoService');
+    cancel();
   } catch {}
-  try {
-    const { stopApiServer } = require('./apiServer');
-    await stopApiServer();
-  } catch {}
-  app.exit(0);
 });
