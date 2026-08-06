@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useStore } from '../store/useStore';
 import {
   Film, Play, Square, Image as ImageIcon, Sparkles,
-  Loader2, FolderOpen, Clock, AlertCircle, CheckCircle2, Wand2, Coins,
+  Loader2, FolderOpen, Clock, AlertCircle, CheckCircle2, Wand2, Coins, Cpu,
 } from 'lucide-react';
 
 const DURATIONS = [5, 10];
@@ -69,18 +69,21 @@ export default function VideoStudio() {
 
   const provider = appConfig?.videoProvider || 'seedance';
   const isCustom = provider === 'custom';
+  const isComfyui = provider === 'comfyui';
+  const consumesPoints = provider === 'seedance';
   const isGenerating = ['queued', 'running', 'downloading'].includes(videoGenStatus);
 
   // 自定义模式：是否已配置 API Key
   const customReady = !!(appConfig?.customVideo?.apiKey && appConfig?.customVideo?.baseURL);
+  // ComfyUI 模式：是否已配置服务地址 + 工作流
+  const comfyuiReady = !!(appConfig?.comfyui?.baseURL && appConfig?.comfyui?.workflow?.trim());
   // 内置模式：积分是否足够
   const pointsCost = calcPointsCost(duration, resolution);
   const userPoints = user?.points ?? 0;
   const pointsEnough = userPoints >= pointsCost;
 
-  const canGenerate = isCustom
-    ? customReady && (!!prompt.trim() || !!refImage)
-    : pointsEnough && (!!prompt.trim() || !!refImage);
+  const providerReady = isCustom ? customReady : isComfyui ? comfyuiReady : pointsEnough;
+  const canGenerate = providerReady && (!!prompt.trim() || !!refImage);
 
   const handleSelectImage = async () => {
     const result = await selectReferenceImage();
@@ -100,13 +103,17 @@ export default function VideoStudio() {
       setActiveView('settings');
       return;
     }
+    if (isComfyui && !comfyuiReady) {
+      setActiveView('settings');
+      return;
+    }
     await generateVideo({
       provider,
       mode,
       prompt: prompt.trim(),
       imageUrl: mode === 'image' ? refImage?.dataUrl : undefined,
-      // 内置模式用 UI 选择的 Seedance 模型；自定义模式用配置中的 modelId
-      model: isCustom ? appConfig.customVideo.modelId : seedanceModel,
+      // 内置模式用 UI 选择的 Seedance 模型；自定义模式用配置中的 modelId；ComfyUI 无需 model
+      model: isCustom ? appConfig.customVideo.modelId : (isComfyui ? undefined : seedanceModel),
       duration,
       resolution,
       ratio,
@@ -130,7 +137,9 @@ export default function VideoStudio() {
 
   const currentModelLabel = isCustom
     ? (appConfig?.customVideo?.modelId || '未配置')
-    : (SEEDANCE_MODELS.find((m) => m.value === seedanceModel)?.label || seedanceModel);
+    : isComfyui
+      ? 'ComfyUI 本地'
+      : (SEEDANCE_MODELS.find((m) => m.value === seedanceModel)?.label || seedanceModel);
 
   return (
     <div className="panel video-studio">
@@ -141,14 +150,15 @@ export default function VideoStudio() {
       </div>
 
       <p className="panel-desc">
-        通过文本提示词或参考图生成短视频。支持<strong>内置 Seedance 2.0</strong>（消耗积分）与
-        <strong>自定义视频生成 AI</strong>（自带 Key，方舟 API 兼容格式）。
+        通过文本提示词或参考图生成短视频。支持<strong>内置 Seedance 2.0</strong>（消耗积分）、
+        <strong>自定义视频生成 AI</strong>（自带 Key，方舟 API 兼容格式）与
+        <strong>ComfyUI 本地部署</strong>（完全免费）。
       </p>
 
       {/* 提供商切换 */}
       <div className="video-mode-tabs" style={{ marginBottom: 16 }}>
         <button
-          className={`mode-tab ${!isCustom ? 'mode-tab--active' : ''}`}
+          className={`mode-tab ${provider === 'seedance' ? 'mode-tab--active' : ''}`}
           onClick={() => handleSwitchProvider('seedance')}
           disabled={isGenerating}
         >
@@ -164,10 +174,18 @@ export default function VideoStudio() {
           <Wand2 size={15} />
           <span>自定义 AI</span>
         </button>
+        <button
+          className={`mode-tab ${isComfyui ? 'mode-tab--active' : ''}`}
+          onClick={() => handleSwitchProvider('comfyui')}
+          disabled={isGenerating}
+        >
+          <Cpu size={15} />
+          <span>ComfyUI 本地</span>
+        </button>
       </div>
 
       {/* 内置模式：积分提示 */}
-      {!isCustom && (
+      {consumesPoints && (
         <div className={`video-apikey-banner ${pointsEnough ? '' : 'video-apikey-banner--warn'}`}>
           <Coins size={16} />
           <span>
@@ -182,6 +200,14 @@ export default function VideoStudio() {
         <div className="video-apikey-banner video-apikey-banner--warn" onClick={() => setActiveView('settings')}>
           <AlertCircle size={16} />
           <span>未配置自定义视频生成 AI 的 API Key / Base URL，点击前往「设置」填写</span>
+        </div>
+      )}
+
+      {/* ComfyUI 模式：未配置提示 */}
+      {isComfyui && !comfyuiReady && (
+        <div className="video-apikey-banner video-apikey-banner--warn" onClick={() => setActiveView('settings')}>
+          <AlertCircle size={16} />
+          <span>未配置 ComfyUI 服务地址 / 工作流模板，点击前往「设置」填写</span>
         </div>
       )}
 
@@ -310,8 +336,8 @@ export default function VideoStudio() {
           </button>
           {showAdvanced && (
             <div className="video-advanced">
-              {/* 内置模式可选 Seedance 模型；自定义模式显示配置的 modelId */}
-              {!isCustom && (
+              {/* 内置模式可选 Seedance 模型；自定义模式显示配置的 modelId；ComfyUI 由工作流决定 */}
+              {!isCustom && !isComfyui && (
                 <div className="param-row">
                   <span className="param-label">模型</span>
                   <div className="param-options">
@@ -335,16 +361,27 @@ export default function VideoStudio() {
                   <span className="param-hint">{appConfig?.customVideo?.modelId || '未配置（请在设置中填写）'}</span>
                 </div>
               )}
-              <div className="param-row">
-                <span className="param-label">水印</span>
-                <button
-                  className={`param-toggle ${watermark ? 'param-toggle--on' : ''}`}
-                  onClick={() => setWatermark(!watermark)}
-                  disabled={isGenerating}
-                >
-                  <span className="param-toggle-knob" />
-                </button>
-              </div>
+              {isComfyui && (
+                <div className="param-row">
+                  <span className="param-label">工作流</span>
+                  <span className="param-hint">
+                    {appConfig?.comfyui?.workflow?.trim() ? '已配置（参数通过占位符注入工作流）' : '未配置（请在设置中填写）'}
+                  </span>
+                </div>
+              )}
+              {/* 水印仅方舟模式支持；ComfyUI 由工作流节点控制 */}
+              {!isComfyui && (
+                <div className="param-row">
+                  <span className="param-label">水印</span>
+                  <button
+                    className={`param-toggle ${watermark ? 'param-toggle--on' : ''}`}
+                    onClick={() => setWatermark(!watermark)}
+                    disabled={isGenerating}
+                  >
+                    <span className="param-toggle-knob" />
+                  </button>
+                </div>
+              )}
               <div className="param-row">
                 <span className="param-label">随机种子</span>
                 <input
@@ -356,7 +393,9 @@ export default function VideoStudio() {
                   max={999999999}
                   disabled={isGenerating}
                 />
-                <span className="param-hint">-1 = 随机</span>
+                <span className="param-hint">
+                  {isComfyui ? '-1 随机（注入 {{seed}}）' : '-1 = 随机'}
+                </span>
               </div>
             </div>
           )}
@@ -409,7 +448,7 @@ export default function VideoStudio() {
                 <CheckCircle2 size={16} className="video-latest-icon" />
                 <span>最新生成</span>
                 <span className="video-latest-provider">
-                  {videoHistory[0].provider === 'custom' ? '自定义' : 'Seedance'}
+                  {videoHistory[0].provider === 'custom' ? '自定义' : videoHistory[0].provider === 'comfyui' ? 'ComfyUI' : 'Seedance'}
                 </span>
               </div>
               <div className="video-player-wrapper">
@@ -464,7 +503,7 @@ export default function VideoStudio() {
                         <span>{item.duration}秒</span>
                         <span>{item.params.resolution}</span>
                         <span>{item.params.ratio}</span>
-                        <span>{item.provider === 'custom' ? '自定义' : 'Seedance'}</span>
+                        <span>{item.provider === 'custom' ? '自定义' : item.provider === 'comfyui' ? 'ComfyUI' : 'Seedance'}</span>
                       </div>
                       <span className="video-history-time">
                         {new Date(item.createdAt).toLocaleString('zh-CN')}

@@ -1527,6 +1527,43 @@ body {
   outline: none;
 }
 .video-apikey-input:focus { border-color: var(--accent); }
+
+/* ComfyUI 本地部署配置 */
+.comfyui-url-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.comfyui-url-row .video-apikey-input { flex: 1; }
+.comfyui-workflow-input {
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  line-height: 1.5;
+  resize: vertical;
+  outline: none;
+  min-height: 180px;
+  white-space: pre;
+  overflow: auto;
+}
+.comfyui-workflow-input:focus { border-color: var(--accent); }
+.comfyui-test-ok {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--success);
+}
+.comfyui-test-fail {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--danger);
+}
 .settings-link {
   color: var(--accent);
   text-decoration: none;

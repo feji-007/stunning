@@ -123,6 +123,9 @@ function registerIpcHandlers() {
     videoService.cancel();
     return true;
   });
+
+  // 测试 ComfyUI 连通性（设置页「测试连接」按钮调用）
+  ipcMain.handle('video:test-comfyui', (_e, baseURL) => videoService.testComfyuiConnection(baseURL));
 }
 
 module.exports = { registerIpcHandlers };

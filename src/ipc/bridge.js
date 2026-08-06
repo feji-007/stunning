@@ -73,6 +73,7 @@ const mockVideoApi = {
   getHistory: async () => [],
   generate: async () => ({ success: false, error: '非 Electron 环境，无法调用视频生成' }),
   cancel: async () => {},
+  testComfyui: async () => { throw new Error('非 Electron 环境'); },
   onProgress: () => noop,
   onSuccess: () => noop,
   onError: () => noop,
@@ -142,6 +143,7 @@ export const bridge = {
 
     generate: (params) => wrap(resolve('video', 'generate')(params), 'video.generate'),
     cancel: () => wrap(resolve('video', 'cancel')(), 'video.cancel'),
+    testComfyui: (baseURL) => wrap(resolve('video', 'testComfyui')(baseURL), 'video.testComfyui'),
 
     onProgress: (cb) => resolve('video', 'onProgress')(cb),
     onSuccess: (cb) => resolve('video', 'onSuccess')(cb),

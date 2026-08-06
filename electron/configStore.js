@@ -9,8 +9,9 @@ const os = require('os');
  * 仅保留视频生成相关配置：
  *   - 服务器连接（认证用）
  *   - 视频默认参数
- *   - 视频生成提供商选择（内置 Seedance / 自定义）
+ *   - 视频生成提供商选择（内置 Seedance / 自定义方舟 / ComfyUI 本地部署）
  *   - 自定义视频生成 AI 配置（方舟 API 兼容格式）
+ *   - ComfyUI 本地部署配置（baseURL + 工作流 JSON 模板）
  */
 
 // 尝试候选目录，直到找到一个可写的
@@ -53,6 +54,7 @@ const DEFAULT_CONFIG = {
   // ===== 视频生成提供商 =====
   // 'seedance' = 内置（服务器调用方舟，消耗积分）
   // 'custom'   = 自定义（客户端直接调用用户配置的方舟兼容端点，不消耗积分）
+  // 'comfyui'  = 本地 ComfyUI 部署（客户端直接调用本地 ComfyUI，不消耗积分）
   videoProvider: 'seedance',
 
   // 默认生成参数
@@ -72,6 +74,16 @@ const DEFAULT_CONFIG = {
     baseURL: 'https://ark.cn-beijing.volces.com/api/v3',
     apiKey: '',
     modelId: 'doubao-seedance-2-0-pro',
+  },
+
+  // ===== ComfyUI 本地部署 =====
+  // 客户端直接调用本地 ComfyUI HTTP API，不消耗服务器积分
+  // baseURL 默认指向 ComfyUI 本地服务地址；workflow 为 API 格式 JSON 模板（字符串），
+  // 支持占位符：{{prompt}} {{negative_prompt}} {{image_filename}} {{width}} {{height}} {{duration}} {{seed}}
+  comfyui: {
+    enabled: false,
+    baseURL: 'http://127.0.0.1:8188',
+    workflow: '',
   },
 };
 
@@ -95,6 +107,7 @@ function loadConfig() {
         ...parsed,
         videoDefaults: { ...DEFAULT_CONFIG.videoDefaults, ...(parsed.videoDefaults || {}) },
         customVideo: { ...DEFAULT_CONFIG.customVideo, ...(parsed.customVideo || {}) },
+        comfyui: { ...DEFAULT_CONFIG.comfyui, ...(parsed.comfyui || {}) },
       };
     } else {
       cache = { ...DEFAULT_CONFIG };
@@ -138,6 +151,10 @@ function updateConfig(partial) {
     customVideo: {
       ...current.customVideo,
       ...(partial.customVideo || {}),
+    },
+    comfyui: {
+      ...current.comfyui,
+      ...(partial.comfyui || {}),
     },
   };
   return saveConfig(next);

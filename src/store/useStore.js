@@ -267,8 +267,8 @@ export const useStore = create((set, get) => ({
       offError();
       if (!result.success) {
         set({ videoGenStatus: 'error', videoGenError: result.error });
-        // 内置模式失败可能已退还积分，仍刷新一次
-        if (genParams.provider !== 'custom') await get().refreshPoints();
+        // 内置模式失败可能已退还积分，仍刷新一次（自定义 / ComfyUI 不消耗积分，无需刷新）
+        if (genParams.provider === 'seedance') await get().refreshPoints();
         return null;
       }
       // 成功后更新状态并加入历史
@@ -288,14 +288,14 @@ export const useStore = create((set, get) => ({
         videoProgress: { stage: null, status: null },
         videoHistory: [record, ...state.videoHistory].slice(0, 50),
       }));
-      // 内置模式消耗积分，刷新余额
-      if (record.provider !== 'custom') await get().refreshPoints();
+      // 内置模式消耗积分，刷新余额；自定义 / ComfyUI 不消耗积分
+      if (record.provider === 'seedance') await get().refreshPoints();
       return record;
     } catch (err) {
       offProgress();
       offError();
       set({ videoGenStatus: 'error', videoGenError: err.message });
-      if (genParams.provider !== 'custom') await get().refreshPoints();
+      if (genParams.provider === 'seedance') await get().refreshPoints();
       return null;
     }
   },

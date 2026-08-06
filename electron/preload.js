@@ -70,6 +70,8 @@ contextBridge.exposeInMainWorld('api', {
     // params: { provider, prompt, imageUrl, duration, resolution, ratio, watermark, seed, model }
     generate: (params) => ipcRenderer.invoke('video:generate', params),
     cancel: () => ipcRenderer.invoke('video:cancel'),
+    // 测试 ComfyUI 连通性
+    testComfyui: (baseURL) => ipcRenderer.invoke('video:test-comfyui', baseURL),
 
     // 事件订阅，均返回取消监听函数
     onProgress: (cb) => {
