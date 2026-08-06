@@ -326,6 +326,58 @@ async function registerIpcHandlers(ipcMain) {
     }
     return { success: true };
   });
+
+  // ===== 后端服务器：认证 / 用户 / AI Agent =====
+  const server = require('./serverClient');
+
+  ipcMain.handle('server:health', async () => server.checkHealth());
+
+  ipcMain.handle('server:register', async (_e, payload) => server.register(payload));
+  ipcMain.handle('server:login', async (_e, payload) => server.login(payload));
+  ipcMain.handle('server:logout', () => { server.logout(); return { success: true }; });
+  ipcMain.handle('server:get-auth', () => server.getAuth());
+  ipcMain.handle('server:set-server-url', (_e, url) => server.setServerUrl(url));
+
+  ipcMain.handle('server:get-profile', async () => server.getProfile());
+  ipcMain.handle('server:update-profile', async (_e, partial) => server.updateProfile(partial));
+  ipcMain.handle('server:get-points', async () => server.getPoints());
+  ipcMain.handle('server:add-points', async (_e, delta) => server.addPoints(delta));
+
+  ipcMain.handle('server:list-agents', async () => server.listAgents());
+  ipcMain.handle('server:get-agent', async (_e, id) => server.getAgent(id));
+  ipcMain.handle('server:create-agent', async (_e, payload) => server.createAgent(payload));
+  ipcMain.handle('server:get-agent-messages', async (_e, id) => server.getAgentMessages(id));
+
+  // Agent 流式对话 —— 通过 event.sender 推送 token / done / error
+  let agentChatAbort = null;
+  ipcMain.handle('server:agent-chat-start', async (event, agentId, message, history) => {
+    const sender = event.sender;
+    const send = (channel, payload) => {
+      if (!sender.isDestroyed()) sender.send(channel, payload);
+    };
+    agentChatAbort = new AbortController();
+    try {
+      await server.chatAgentStream(agentId, message, history, {
+        onToken: (token) => send('server:agent-chat-token', token),
+      }, agentChatAbort.signal);
+      send('server:agent-chat-done', { success: true });
+      return { success: true };
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        send('server:agent-chat-done', { success: true, aborted: true });
+        return { success: true, aborted: true };
+      }
+      send('server:agent-chat-error', { message: err.message });
+      return { success: false, error: err.message };
+    } finally {
+      agentChatAbort = null;
+    }
+  });
+
+  ipcMain.handle('server:agent-chat-cancel', () => {
+    if (agentChatAbort) agentChatAbort.abort();
+    return { success: true };
+  });
 }
 
 module.exports = { registerIpcHandlers };

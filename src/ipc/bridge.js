@@ -30,7 +30,14 @@ async function wrap(promise, label) {
   try {
     return await promise;
   } catch (err) {
-    console.error(`[bridge] ${label} 失败:`, err);
+    // 仅在真实 Electron 环境下将其视为错误并打印到控制台。
+    // 在非 Electron（浏览器）环境使用 mock 实现时，避免大量 error 输出干扰调试。
+    if (rawApi) {
+      console.error(`[bridge] ${label} 失败:`, err);
+    } else {
+      // 非 Electron 环境下记录为调试信息，减少噪音
+      if (console.debug) console.debug && console.debug(`[bridge] ${label} (mock) 失败:`, err && err.message ? err.message : err);
+    }
     throw err;
   }
 }
@@ -59,6 +66,30 @@ const mockVideoApi = {
   onError: () => noop,
 };
 
+const mockServerApi = {
+  health: async () => ({ ok: false, error: '非 Electron 环境' }),
+  register: async () => { throw new Error('非 Electron 环境，无法注册'); },
+  login: async () => { throw new Error('非 Electron 环境，无法登录'); },
+  logout: async () => ({ success: true }),
+  getAuth: async () => ({ serverUrl: 'http://localhost:3001', token: '', userId: null }),
+  setServerUrl: async (url) => url,
+  getProfile: async () => { throw new Error('非 Electron 环境'); },
+  updateProfile: async () => { throw new Error('非 Electron 环境'); },
+  getPoints: async () => ({ points: 0 }),
+  addPoints: async () => ({ points: 0 }),
+  listAgents: async () => [],
+  getAgent: async () => null,
+  createAgent: async () => null,
+  getAgentMessages: async () => [],
+  chatStream: {
+    start: async () => { throw new Error('非 Electron 环境，无法对话'); },
+    cancel: async () => {},
+    onToken: () => noop,
+    onDone: () => noop,
+    onError: () => noop,
+  },
+};
+
 const mockApi = {
   selectModelDirectory: resolveNull,
   scanModels: async () => [],
@@ -73,6 +104,7 @@ const mockApi = {
   getApiServerStatus: async () => ({ running: false, port: null, url: null }),
   getDefaultModelDir: async () => './models',
   video: mockVideoApi,
+  server: mockServerApi,
 };
 
 function resolve(...pathParts) {
@@ -146,5 +178,32 @@ export const bridge = {
     onProgress: (cb) => resolve('video', 'onProgress')(cb),
     onSuccess: (cb) => resolve('video', 'onSuccess')(cb),
     onError: (cb) => resolve('video', 'onError')(cb),
+  },
+
+  // ===== 后端服务器：认证 / 用户 / AI Agent =====
+  server: {
+    health: () => wrap(resolve('server', 'health')(), 'server.health'),
+    register: (payload) => wrap(resolve('server', 'register')(payload), 'server.register'),
+    login: (payload) => wrap(resolve('server', 'login')(payload), 'server.login'),
+    logout: () => wrap(resolve('server', 'logout')(), 'server.logout'),
+    getAuth: () => wrap(resolve('server', 'getAuth')(), 'server.getAuth'),
+    setServerUrl: (url) => wrap(resolve('server', 'setServerUrl')(url), 'server.setServerUrl'),
+    getProfile: () => wrap(resolve('server', 'getProfile')(), 'server.getProfile'),
+    updateProfile: (partial) => wrap(resolve('server', 'updateProfile')(partial), 'server.updateProfile'),
+    getPoints: () => wrap(resolve('server', 'getPoints')(), 'server.getPoints'),
+    addPoints: (delta) => wrap(resolve('server', 'addPoints')(delta), 'server.addPoints'),
+    listAgents: () => wrap(resolve('server', 'listAgents')(), 'server.listAgents'),
+    getAgent: (id) => wrap(resolve('server', 'getAgent')(id), 'server.getAgent'),
+    createAgent: (payload) => wrap(resolve('server', 'createAgent')(payload), 'server.createAgent'),
+    getAgentMessages: (id) => wrap(resolve('server', 'getAgentMessages')(id), 'server.getAgentMessages'),
+
+    chatStream: {
+      start: (agentId, message, history) =>
+        wrap(resolve('server', 'chatStream', 'start')(agentId, message, history), 'server.chatStream.start'),
+      cancel: () => wrap(resolve('server', 'chatStream', 'cancel')(), 'server.chatStream.cancel'),
+      onToken: (cb) => resolve('server', 'chatStream', 'onToken')(cb),
+      onDone: (cb) => resolve('server', 'chatStream', 'onDone')(cb),
+      onError: (cb) => resolve('server', 'chatStream', 'onError')(cb),
+    },
   },
 };

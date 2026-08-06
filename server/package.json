@@ -1,0 +1,17 @@
+{
+  "name": "stunning-server",
+  "version": "1.0.0",
+  "description": "绝色（Stunning）后端服务器 — 用户认证 / AI Agent / 数据库（Node 内置 SQLite）",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node --experimental-sqlite index.js",
+    "dev": "node --experimental-sqlite index.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2"
+  }
+}
