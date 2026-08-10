@@ -17,9 +17,6 @@ const { authRequired } = require('../middleware/auth');
 
 const router = express.Router();
 
-/**
- * 生成业务订单号: RC + 时间戳 + 随机串
- */
 function genOrderNo() {
   const ts = Date.now().toString(36);
   const rand = crypto.randomBytes(4).toString('hex');
@@ -35,24 +32,17 @@ function serializeOrder(row) {
     price: row.price,
     points: row.points,
     bonus: row.bonus,
-    status: row.status,           // pending | paid | cancelled
+    status: row.status,
     paidAt: row.paid_at,
     createdAt: row.created_at,
   };
 }
 
-/**
- * 获取套餐列表
- */
 router.get('/plans', (_req, res) => {
   res.json({ plans: settings.get('rechargePlans') });
 });
 
-/**
- * 创建充值订单
- * body: { planId }
- */
-router.post('/orders', authRequired, (req, res) => {
+router.post('/orders', authRequired, async (req, res) => {
   const { planId } = req.body || {};
   if (!planId) {
     return res.status(400).json({ error: '请选择充值套餐' });
@@ -63,25 +53,17 @@ router.post('/orders', authRequired, (req, res) => {
   }
 
   const orderNo = genOrderNo();
-  const info = db.prepare(`
-    INSERT INTO recharge_orders (order_no, user_id, plan_id, price, points, bonus, status)
-    VALUES (?, ?, ?, ?, ?, ?, 'pending')
-  `).run(orderNo, req.user.id, plan.id, plan.price, plan.points, plan.bonus);
+  const info = await db.run(
+    'INSERT INTO recharge_orders (order_no, user_id, plan_id, price, points, bonus, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    orderNo, req.user.id, plan.id, plan.price, plan.points, plan.bonus, 'pending'
+  );
 
-  const row = db.prepare('SELECT * FROM recharge_orders WHERE id = ?').get(info.lastInsertRowid);
+  const row = await db.get('SELECT * FROM recharge_orders WHERE id = ?', info.lastInsertRowid);
   res.status(201).json(serializeOrder(row));
 });
 
-/**
- * 模拟支付完成
- * 立即将订单置为 paid，并给用户增加积分
- * 生产环境：替换为支付平台异步回调
- */
-router.post('/orders/:id/pay', authRequired, (req, res) => {
-  const row = db.prepare('SELECT * FROM recharge_orders WHERE id = ? AND user_id = ?').get(
-    req.params.id,
-    req.user.id
-  );
+router.post('/orders/:id/pay', authRequired, async (req, res) => {
+  const row = await db.get('SELECT * FROM recharge_orders WHERE id = ? AND user_id = ?', req.params.id, req.user.id);
   if (!row) {
     return res.status(404).json({ error: '订单不存在' });
   }
@@ -92,27 +74,20 @@ router.post('/orders/:id/pay', authRequired, (req, res) => {
     return res.status(400).json({ error: '订单已取消' });
   }
 
-  // 事务：订单置 paid + 用户加积分
-  // node:sqlite 的 DatabaseSync 没有 .transaction() 方法，手动用 BEGIN/COMMIT/ROLLBACK
-  try {
-    db.exec('BEGIN');
-    db.prepare(`
-      UPDATE recharge_orders
-      SET status = 'paid', paid_at = strftime('%s','now') * 1000,
-          updated_at = strftime('%s','now') * 1000
-      WHERE id = ?
-    `).run(row.id);
-    db.prepare(`
-      UPDATE users SET points = points + ?, updated_at = strftime('%s','now') * 1000 WHERE id = ?
-    `).run(row.points, req.user.id);
-    db.exec('COMMIT');
-  } catch (err) {
-    db.exec('ROLLBACK');
-    throw err;
-  }
+  const now = Date.now();
+  await db.transaction(async (tx) => {
+    await tx.run(
+      'UPDATE recharge_orders SET status = ?, paid_at = ?, updated_at = ? WHERE id = ?',
+      'paid', now, now, row.id
+    );
+    await tx.run(
+      'UPDATE users SET points = points + ?, updated_at = ? WHERE id = ?',
+      row.points, now, req.user.id
+    );
+  });
 
-  const updated = db.prepare('SELECT * FROM recharge_orders WHERE id = ?').get(row.id);
-  const pointsRow = db.prepare('SELECT points FROM users WHERE id = ?').get(req.user.id);
+  const updated = await db.get('SELECT * FROM recharge_orders WHERE id = ?', row.id);
+  const pointsRow = await db.get('SELECT points FROM users WHERE id = ?', req.user.id);
 
   res.json({
     order: serializeOrder(updated),
@@ -121,13 +96,11 @@ router.post('/orders/:id/pay', authRequired, (req, res) => {
   });
 });
 
-/**
- * 当前用户充值历史
- */
-router.get('/history', authRequired, (req, res) => {
-  const rows = db.prepare(`
-    SELECT * FROM recharge_orders WHERE user_id = ? ORDER BY created_at DESC LIMIT 50
-  `).all(req.user.id);
+router.get('/history', authRequired, async (req, res) => {
+  const rows = await db.all(
+    'SELECT * FROM recharge_orders WHERE user_id = ? ORDER BY created_at DESC LIMIT 50',
+    req.user.id
+  );
   res.json(rows.map(serializeOrder));
 });
 

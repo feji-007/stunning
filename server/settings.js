@@ -5,12 +5,12 @@
  * 迁移到数据库 settings 表，由后台管理界面维护，运行时实时生效。
  *
  * 设计：
- *   - 启动时 loadAll() 一次性加载到内存缓存
- *   - get(key) 从缓存读，DB 缺失时回退到 config.js 默认值
- *   - set(key, value) 写 DB 并刷新缓存
+ *   - 启动时 init() 异步加载所有配置到内存缓存（由 index.js 在数据库初始化后调用）
+ *   - get(key) 从缓存同步读，DB 缺失时回退到 config.js 默认值
+ *   - set(key, value) 异步写 DB（UPSERT）并刷新缓存
  *   - 业务路由统一通过本模块读配置，不再直接读 config.js 的可变部分
  *
- * config.js 仍保留静态配置（端口、DB 路径、JWT 密钥等），作为兜底默认值。
+ * config.js 仍保留静态配置（端口、DB 配置、JWT 密钥等），作为兜底默认值。
  */
 const db = require('./db');
 const config = require('./config');
@@ -30,11 +30,12 @@ const DEFAULTS = {
 };
 
 /**
- * 启动时加载所有配置到缓存
+ * 启动时加载所有配置到缓存（异步）
+ * 必须在 db.initDb() 之后调用
  */
-function loadAll() {
+async function loadAll() {
   try {
-    const rows = db.prepare('SELECT key, value FROM settings').all();
+    const rows = await db.all('SELECT key, value FROM settings');
     for (const row of rows) {
       try {
         cache.set(row.key, JSON.parse(row.value));
@@ -48,7 +49,7 @@ function loadAll() {
 }
 
 /**
- * 读取单个配置（带默认值兜底）
+ * 读取单个配置（同步，从缓存读；DB 缺失时回退默认值）
  * @param {string} key - ark | videoPoints | rechargePlans | seedanceModels
  * @returns {*}
  */
@@ -58,7 +59,7 @@ function get(key) {
 }
 
 /**
- * 读取所有配置（用于后台展示）
+ * 读取所有配置（同步，用于后台展示）
  */
 function getAll() {
   const result = {};
@@ -69,31 +70,28 @@ function getAll() {
 }
 
 /**
- * 写入配置（更新 DB + 刷新缓存）
+ * 写入配置（异步：UPSERT DB + 刷新缓存）
  */
-function set(key, value) {
+async function set(key, value) {
   const json = typeof value === 'string' ? value : JSON.stringify(value);
-  db.prepare(`
-    INSERT INTO settings (key, value, updated_at) VALUES (?, ?, strftime('%s','now') * 1000)
-    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
-  `).run(key, json);
+  await db.run(db.upsertSettingsSql(), key, json, Date.now());
   cache.set(key, value);
   return value;
 }
 
 /**
- * 读取配置项的描述信息（用于后台展示）
+ * 读取配置项的描述信息（异步，用于后台展示）
  */
-function getMeta(key) {
-  const row = db.prepare('SELECT description, updated_at FROM settings WHERE key = ?').get(key);
+async function getMeta(key) {
+  const row = await db.get('SELECT description, updated_at FROM settings WHERE key = ?', key);
   return row || null;
 }
 
 /**
  * 读取所有配置项（含描述、更新时间，用于后台列表）
  */
-function getAllWithMeta() {
-  const rows = db.prepare('SELECT key, value, description, updated_at FROM settings ORDER BY key').all();
+async function getAllWithMeta() {
+  const rows = await db.all('SELECT key, value, description, updated_at FROM settings ORDER BY key');
   return rows.map((row) => {
     let value;
     try { value = JSON.parse(row.value); } catch { value = row.value; }
@@ -106,15 +104,12 @@ function getAllWithMeta() {
   });
 }
 
-// 模块加载时预加载缓存
-loadAll();
-
 module.exports = {
-  get,
-  set,
-  getAll,
-  getMeta,
-  getAllWithMeta,
-  loadAll,
+  get,        // 同步读缓存
+  set,        // 异步写 DB
+  getAll,     // 同步读缓存
+  getMeta,    // 异步
+  getAllWithMeta, // 异步
+  loadAll,    // 异步初始化
   KEYS: Object.keys(DEFAULTS),
 };

@@ -30,7 +30,7 @@ function issueToken(user) {
 }
 
 // 注册
-router.post('/register', (req, res) => {
+router.post('/register', async (req, res) => {
   const { username, password, nickname } = req.body || {};
   if (!username || !password) {
     return res.status(400).json({ error: '用户名和密码不能为空' });
@@ -42,30 +42,30 @@ router.post('/register', (req, res) => {
     return res.status(400).json({ error: '密码长度至少 6 位' });
   }
 
-  const exists = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
+  const exists = await db.get('SELECT id FROM users WHERE username = ?', username);
   if (exists) {
     return res.status(409).json({ error: '该用户名已被注册' });
   }
 
   const hash = bcrypt.hashSync(password, 10);
-  const info = db.prepare(`
-    INSERT INTO users (username, password_hash, nickname, points)
-    VALUES (?, ?, ?, ?)
-  `).run(username, hash, nickname || username, config.defaultPoints);
+  const info = await db.run(
+    'INSERT INTO users (username, password_hash, nickname, points) VALUES (?, ?, ?, ?)',
+    username, hash, nickname || username, config.defaultPoints
+  );
 
-  const row = db.prepare('SELECT * FROM users WHERE id = ?').get(info.lastInsertRowid);
+  const row = await db.get('SELECT * FROM users WHERE id = ?', info.lastInsertRowid);
   const user = sanitizeUser(row);
   const token = issueToken(row);
   res.json({ token, user });
 });
 
 // 登录
-router.post('/login', (req, res) => {
+router.post('/login', async (req, res) => {
   const { username, password } = req.body || {};
   if (!username || !password) {
     return res.status(400).json({ error: '用户名和密码不能为空' });
   }
-  const row = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+  const row = await db.get('SELECT * FROM users WHERE username = ?', username);
   if (!row || !bcrypt.compareSync(password, row.password_hash)) {
     return res.status(401).json({ error: '用户名或密码错误' });
   }

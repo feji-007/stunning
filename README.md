@@ -46,7 +46,7 @@
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │              后端服务器（独立部署，server/）                     │
-│   Express + SQLite (node:sqlite) + JWT                       │
+│   Express + SQLite/MySQL（可切换）+ JWT                       │
 │   ┌─────────┐ ┌─────────┐ ┌──────────┐ ┌─────────────────┐  │
 │   │ auth 路由│ │user 路由│ │video 路由│ │ recharge 路由   │  │
 │   │注册/登录│ │资料/积分│ │Seedance │ │ 套餐/订单/支付  │  │
@@ -61,7 +61,7 @@
 │   │ (DB 配置缓存/读写) │  │ → 火山方舟 API (ARK_API_KEY) │   │
 │   └────────────────────┘  └──────────────────────────────┘   │
 │   ┌──────────────────────────────────────────────────────┐   │
-│   │  SQLite（users / video_tasks / recharge_orders /     │   │
+│   │  SQLite / MySQL（users / video_tasks / recharge_orders /）│   │
 │   │         admins / settings）                          │   │
 │   └──────────────────────────────────────────────────────┘   │
 └─────────┬───────────────────────────────┬─────────────────────┘
@@ -101,7 +101,10 @@ stunning/
 │   ├── index.js               # Express 入口
 │   ├── config.js              # 静态配置（端口、DB、JWT、方舟默认值）
 │   ├── settings.js            # DB 配置模块（运行时可变配置缓存/读写）
-│   ├── db.js                  # SQLite 连接 + 建表 + 种子数据 + 迁移
+│   ├── db.js                  # 数据库工厂（按 driver 创建 adapter）+ 建表 + 种子
+│   ├── db/                    # 数据库 adapter（统一 async 接口）
+│   │   ├── sqliteAdapter.js   # SQLite 实现（node:sqlite）
+│   │   └── mysqlAdapter.js    # MySQL 实现（mysql2/promise 连接池）
 │   ├── middleware/
 │   │   ├── auth.js            # 普通用户 JWT 鉴权
 │   │   └── adminAuth.js       # 管理员 JWT 鉴权（独立体系）
@@ -311,14 +314,107 @@ cd admin && npm run build   # 构建到 admin/dist/
 
 ## 🗄️ 数据库
 
-- **类型**：SQLite（Node 22.5+ 内置 `node:sqlite`，无需原生依赖）
-- **位置**：`server/data/stunning.db`
-- **表**：
-  - `users` — 用户（username, password_hash, nickname, avatar, points, ...）
-  - `video_tasks` — 视频任务（ark_task_id, provider, model, prompt, params, status, video_url, points_cost, refunded, ...）
-  - `recharge_orders` — 充值订单（order_no, plan_id, price, points, bonus, status, paid_at, ...）
-  - `admins` — 管理员账号（独立体系，username, password_hash, nickname, ...）
-  - `settings` — 系统配置（key-value，value 存 JSON：ark / videoPoints / rechargePlans / seedanceModels）
+支持 **SQLite** 和 **MySQL** 两种数据库，通过环境变量 `DB_DRIVER` 一键切换，业务代码完全相同。
+
+### 驱动对比
+
+| 特性 | SQLite | MySQL |
+|------|--------|-------|
+| 驱动 | Node 22.5+ 内置 `node:sqlite` | `mysql2`（纯 JS，无需编译） |
+| 适用场景 | 开发 / 小型部署 / 单机 | 生产 / 多实例 / 高并发 |
+| 安装依赖 | 零依赖 | `npm install mysql2`（已包含在 package.json） |
+| 连接信息 | 文件路径 | host / port / user / password / database |
+| 版本要求 | Node ≥ 22.5 | MySQL ≥ 8.0 |
+
+### 表结构（两种数据库完全一致）
+
+- `users` — 用户（username, password_hash, nickname, avatar, points, ...）
+- `video_tasks` — 视频任务（ark_task_id, provider, model, prompt, params, status, video_url, points_cost, refunded, ...）
+- `recharge_orders` — 充值订单（order_no, plan_id, price, points, bonus, status, paid_at, ...）
+- `admins` — 管理员账号（独立体系，username, password_hash, nickname, ...）
+- `settings` — 系统配置（key-value，value 存 JSON：ark / videoPoints / rechargePlans / seedanceModels）
+
+### 使用 SQLite（默认，零配置）
+
+```bash
+# 无需任何数据库配置，直接启动
+cd server
+npm start
+# 数据库文件自动创建在 server/data/stunning.db
+```
+
+可自定义文件目录：
+```bash
+export STUNNING_DATA_DIR="/var/lib/stunning"   # 数据库存放目录
+```
+
+### 切换到 MySQL
+
+**1. 创建数据库**
+
+```sql
+CREATE DATABASE stunning CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'stunning'@'%' IDENTIFIED BY 'your-password';
+GRANT ALL PRIVILEGES ON stunning.* TO 'stunning'@'%';
+FLUSH PRIVILEGES;
+```
+
+**2. 配置环境变量**
+
+```bash
+export DB_DRIVER=mysql              # 切换驱动
+export DB_HOST=127.0.0.1            # MySQL 地址
+export DB_PORT=3306                 # MySQL 端口
+export DB_USER=stunning             # 用户名
+export DB_PASSWORD=your-password    # 密码
+export DB_NAME=stunning             # 数据库名
+export DB_POOL_SIZE=10              # 连接池大小（可选，默认 10）
+```
+
+**3. 启动服务器**
+
+```bash
+cd server
+npm start
+# 首次启动自动建表 + 种子数据（管理员 admin/admin123 + 默认系统配置）
+```
+
+启动后日志会显示：
+```
+[stunning-server] 数据库驱动: mysql
+[stunning-server] 数据库: mysql://stunning@127.0.0.1:3306/stunning
+[db] 数据库就绪（驱动: mysql）
+```
+
+### 从 SQLite 迁移到 MySQL
+
+1. 在 MySQL 中创建数据库（见上方）
+2. 设置 `DB_DRIVER=mysql` 及连接环境变量
+3. 启动服务器（自动建表 + 种子）
+4. 如需迁移已有数据，用 `sqlite3` 导出再导入 MySQL：
+
+```bash
+# 导出 SQLite 数据
+sqlite3 server/data/stunning.db .dump --data-only > data.sql
+
+# 简单处理方言差异后导入 MySQL
+# （需将 AUTOINCREMENT → AUTO_INCREMENT 等，或用工具如 sqlite3-to-mysql）
+mysql -u stunning -p stunning < data.sql
+```
+
+### 数据访问层架构
+
+```
+routes / settings.js
+       │  统一调用 db.get / db.all / db.run / db.transaction（全部 async）
+       ▼
+   db.js（工厂）
+       │  根据 config.db.driver 创建对应 adapter
+       ├── db/sqliteAdapter.js   ← node:sqlite 包装为 async
+       └── db/mysqlAdapter.js    ← mysql2/promise 连接池
+```
+
+两种 adapter 暴露完全相同的接口，业务代码（routes）不关心底层数据库类型。新增数据库支持只需实现一个新 adapter 并在 `db.js` 工厂中注册。
 
 数据库与方舟 Key 全部留在服务器端，客户端**完全不感知**。迁移服务器只需改配置 + 客户端登录界面填新地址。
 
@@ -328,10 +424,22 @@ cd admin && npm run build   # 构建到 admin/dist/
 cd server
 npm install --omit=dev
 
-# 环境变量
+# 基础环境变量
 export PORT=3001
 export JWT_SECRET="your-strong-secret"
+
+# 数据库配置（二选一）
+# —— 方式 A：SQLite（默认，零配置）——
 export STUNNING_DATA_DIR="/var/lib/stunning"   # 数据库存放目录
+
+# —— 方式 B：MySQL ——
+# export DB_DRIVER=mysql
+# export DB_HOST=127.0.0.1
+# export DB_PORT=3306
+# export DB_USER=stunning
+# export DB_PASSWORD=your-password
+# export DB_NAME=stunning
+
 # 方舟 Key 也可通过环境变量预设（之后可在后台管理修改）
 export ARK_API_KEY="your-ark-key"
 export ARK_MODEL="doubao-seedance-2-0-pro"
@@ -355,7 +463,7 @@ location /api/ {
 | 客户端前端 | React 18 + Vite 5 + Zustand 4 |
 | 后台管理前端 | React 18 + Vite 5 + Ant Design 5 + React Router 6 |
 | 后端服务 | Express 4 |
-| 数据库 | SQLite (Node 内置 `node:sqlite`) |
+| 数据库 | SQLite (Node 内置 `node:sqlite`) / MySQL (mysql2) 可切换 |
 | 认证 | JWT (jsonwebtoken) + bcryptjs（用户与管理员双体系） |
 | 视频生成 | 火山引擎方舟 API（Seedance 2.0） |
 | UI 图标 | Lucide React（客户端） / @ant-design/icons（后台） |

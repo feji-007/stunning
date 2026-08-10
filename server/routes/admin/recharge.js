@@ -1,10 +1,9 @@
 /**
  * 充值管理路由（管理员）
- *
  *  - GET    /api/admin/recharge/plans       套餐列表
  *  - PUT    /api/admin/recharge/plans       保存套餐列表（整体替换）
  *  - GET    /api/admin/recharge/orders      订单列表（分页 + 搜索）
- *  - GET    /api/admin/recharge/stats       充值统计（总金额/总积分/订单数）
+ *  - GET    /api/admin/recharge/stats       充值统计
  */
 const express = require('express');
 const db = require('../../db');
@@ -13,23 +12,15 @@ const { adminRequired } = require('../../middleware/adminAuth');
 
 const router = express.Router();
 
-/**
- * 套餐列表（从数据库 settings 读）
- */
 router.get('/plans', adminRequired, (_req, res) => {
   res.json({ plans: settings.get('rechargePlans') });
 });
 
-/**
- * 保存套餐列表（整体替换）
- * body: { plans: [{ id, price, points, bonus, label }] }
- */
-router.put('/plans', adminRequired, (req, res) => {
+router.put('/plans', adminRequired, async (req, res) => {
   const { plans } = req.body || {};
   if (!Array.isArray(plans)) {
     return res.status(400).json({ error: 'plans 必须为数组' });
   }
-  // 校验每个套餐
   for (const p of plans) {
     if (!p.id || typeof p.price !== 'number' || typeof p.points !== 'number') {
       return res.status(400).json({ error: '套餐格式错误：需包含 id / price / points' });
@@ -37,15 +28,11 @@ router.put('/plans', adminRequired, (req, res) => {
     if (p.bonus == null) p.bonus = 0;
     if (!p.label) p.label = '';
   }
-  settings.set('rechargePlans', plans);
+  await settings.set('rechargePlans', plans);
   res.json({ plans });
 });
 
-/**
- * 订单列表（分页 + 搜索）
- * query: { keyword, status, page=1, pageSize=20 }
- */
-router.get('/orders', adminRequired, (req, res) => {
+router.get('/orders', adminRequired, async (req, res) => {
   const { keyword, status } = req.query;
   const page = Math.max(1, parseInt(req.query.page, 10) || 1);
   const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize, 10) || 20));
@@ -61,19 +48,14 @@ router.get('/orders', adminRequired, (req, res) => {
   }
   const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
-  const total = db.prepare(`
-    SELECT COUNT(*) AS c FROM recharge_orders o
-    LEFT JOIN users u ON o.user_id = u.id
-    ${whereClause}
-  `).get(...params).c;
-
-  const rows = db.prepare(`
-    SELECT o.*, u.username, u.nickname
-    FROM recharge_orders o
-    LEFT JOIN users u ON o.user_id = u.id
-    ${whereClause}
-    ORDER BY o.created_at DESC LIMIT ? OFFSET ?
-  `).all(...params, pageSize, offset);
+  const totalRow = await db.get(
+    `SELECT COUNT(*) AS c FROM recharge_orders o LEFT JOIN users u ON o.user_id = u.id ${whereClause}`,
+    ...params
+  );
+  const rows = await db.all(
+    `SELECT o.*, u.username, u.nickname FROM recharge_orders o LEFT JOIN users u ON o.user_id = u.id ${whereClause} ORDER BY o.created_at DESC LIMIT ? OFFSET ?`,
+    ...params, pageSize, offset
+  );
 
   const list = rows.map((r) => ({
     id: r.id,
@@ -90,31 +72,25 @@ router.get('/orders', adminRequired, (req, res) => {
     createdAt: r.created_at,
   }));
 
-  res.json({ list, total, page, pageSize });
+  res.json({ list, total: totalRow.c, page, pageSize });
 });
 
-/**
- * 充值统计
- */
-router.get('/stats', adminRequired, (_req, res) => {
-  const paid = db.prepare(`
+router.get('/stats', adminRequired, async (_req, res) => {
+  const paid = await db.get(`
     SELECT
       COUNT(*) AS orderCount,
       COALESCE(SUM(price), 0) AS totalAmount,
       COALESCE(SUM(points), 0) AS totalPoints
     FROM recharge_orders WHERE status = 'paid'
-  `).get();
-  const today = db.prepare(`
-    SELECT
-      COUNT(*) AS orderCount,
-      COALESCE(SUM(price), 0) AS totalAmount
-    FROM recharge_orders
-    WHERE status = 'paid' AND paid_at >= strftime('%s','now','start of day') * 1000
-  `).get();
-  res.json({
-    total: paid,
-    today,
-  });
+  `);
+  // 今天 0 点的时间戳（应用层计算，数据库无关）
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const today = await db.get(`
+    SELECT COUNT(*) AS orderCount, COALESCE(SUM(price), 0) AS totalAmount
+    FROM recharge_orders WHERE status = 'paid' AND paid_at >= ?
+  `, todayStart.getTime());
+  res.json({ total: paid, today });
 });
 
 module.exports = router;

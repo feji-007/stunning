@@ -10,7 +10,7 @@
 const path = require('path');
 const fs = require('fs');
 
-// 数据库文件目录：优先用项目内 ./data，确保可写
+// SQLite 数据库文件目录：优先用项目内 ./data，确保可写
 const DATA_DIR = process.env.STUNNING_DATA_DIR || path.join(__dirname, 'data');
 try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch {}
 
@@ -18,7 +18,25 @@ module.exports = {
   // HTTP 监听端口
   port: parseInt(process.env.PORT || '3001', 10),
 
-  // SQLite 数据库文件路径（部署在服务器上）
+  // ===== 数据库配置（支持 SQLite / MySQL 切换）=====
+  // 通过环境变量 DB_DRIVER 选择驱动：'sqlite'（默认）或 'mysql'
+  // 数据库连接信息全部留在服务器，客户端无感
+  db: {
+    driver: (process.env.DB_DRIVER || 'sqlite').toLowerCase(),
+    sqlite: {
+      // SQLite 数据库文件路径
+      dbPath: path.join(DATA_DIR, 'stunning.db'),
+    },
+    mysql: {
+      host: process.env.DB_HOST || '127.0.0.1',
+      port: parseInt(process.env.DB_PORT || '3306', 10),
+      user: process.env.DB_USER || 'root',
+      password: process.env.DB_PASSWORD || '',
+      database: process.env.DB_NAME || 'stunning',
+      connectionLimit: parseInt(process.env.DB_POOL_SIZE || '10', 10),
+    },
+  },
+  // 保留 dbPath 用于日志输出（SQLite 模式）
   dbPath: path.join(DATA_DIR, 'stunning.db'),
 
   // JWT 签名密钥（生产环境请通过环境变量覆盖）

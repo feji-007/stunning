@@ -1,6 +1,5 @@
 /**
  * 视频任务管理路由（管理员）
- *
  *  - GET   /api/admin/video/tasks       任务列表（分页 + 搜索 + 状态筛选）
  *  - GET   /api/admin/video/stats       任务统计
  *  - GET   /api/admin/video/users/:id/tasks  指定用户的任务
@@ -35,11 +34,7 @@ function serializeTask(r) {
   };
 }
 
-/**
- * 任务列表
- * query: { keyword, status, page=1, pageSize=20 }
- */
-router.get('/tasks', adminRequired, (req, res) => {
+router.get('/tasks', adminRequired, async (req, res) => {
   const { keyword, status } = req.query;
   const page = Math.max(1, parseInt(req.query.page, 10) || 1);
   const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize, 10) || 20));
@@ -55,36 +50,30 @@ router.get('/tasks', adminRequired, (req, res) => {
   }
   const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
-  const total = db.prepare(`
-    SELECT COUNT(*) AS c FROM video_tasks t
-    LEFT JOIN users u ON t.user_id = u.id
-    ${whereClause}
-  `).get(...params).c;
+  const totalRow = await db.get(
+    `SELECT COUNT(*) AS c FROM video_tasks t LEFT JOIN users u ON t.user_id = u.id ${whereClause}`,
+    ...params
+  );
+  const rows = await db.all(
+    `SELECT t.*, u.username, u.nickname FROM video_tasks t LEFT JOIN users u ON t.user_id = u.id ${whereClause} ORDER BY t.created_at DESC LIMIT ? OFFSET ?`,
+    ...params, pageSize, offset
+  );
 
-  const rows = db.prepare(`
-    SELECT t.*, u.username, u.nickname
-    FROM video_tasks t
-    LEFT JOIN users u ON t.user_id = u.id
-    ${whereClause}
-    ORDER BY t.created_at DESC LIMIT ? OFFSET ?
-  `).all(...params, pageSize, offset);
-
-  res.json({ list: rows.map(serializeTask), total, page, pageSize });
+  res.json({ list: rows.map(serializeTask), total: totalRow.c, page, pageSize });
 });
 
-/**
- * 任务统计
- */
-router.get('/stats', adminRequired, (_req, res) => {
-  const byStatus = db.prepare(`
-    SELECT status, COUNT(*) AS count, COALESCE(SUM(points_cost), 0) AS points
-    FROM video_tasks GROUP BY status
-  `).all();
-  const today = db.prepare(`
-    SELECT COUNT(*) AS count
-    FROM video_tasks WHERE created_at >= strftime('%s','now','start of day') * 1000
-  `).get();
-  const stats = { byStatus: {}, total: 0, todayCount: today.count, totalPointsCost: 0 };
+router.get('/stats', adminRequired, async (_req, res) => {
+  const byStatus = await db.all(
+    'SELECT status, COUNT(*) AS count, COALESCE(SUM(points_cost), 0) AS points FROM video_tasks GROUP BY status'
+  );
+  // 今天 0 点的时间戳（应用层计算，数据库无关）
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const todayRow = await db.get(
+    'SELECT COUNT(*) AS count FROM video_tasks WHERE created_at >= ?',
+    todayStart.getTime()
+  );
+  const stats = { byStatus: {}, total: 0, todayCount: todayRow.count, totalPointsCost: 0 };
   for (const r of byStatus) {
     stats.byStatus[r.status] = { count: r.count, points: r.points };
     stats.total += r.count;
@@ -93,17 +82,11 @@ router.get('/stats', adminRequired, (_req, res) => {
   res.json(stats);
 });
 
-/**
- * 指定用户的任务
- */
-router.get('/users/:id/tasks', adminRequired, (req, res) => {
-  const rows = db.prepare(`
-    SELECT t.*, u.username, u.nickname
-    FROM video_tasks t
-    LEFT JOIN users u ON t.user_id = u.id
-    WHERE t.user_id = ?
-    ORDER BY t.created_at DESC LIMIT 100
-  `).all(req.params.id);
+router.get('/users/:id/tasks', adminRequired, async (req, res) => {
+  const rows = await db.all(
+    `SELECT t.*, u.username, u.nickname FROM video_tasks t LEFT JOIN users u ON t.user_id = u.id WHERE t.user_id = ? ORDER BY t.created_at DESC LIMIT 100`,
+    req.params.id
+  );
   res.json(rows.map(serializeTask));
 });
 

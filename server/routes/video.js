@@ -10,18 +10,12 @@
  */
 const express = require('express');
 const db = require('../db');
-const config = require('../config');
 const settings = require('../settings');
 const { authRequired } = require('../middleware/auth');
 const { createVideoTask, getVideoTask } = require('../services/arkService');
 
 const router = express.Router();
 
-/**
- * 计算视频生成所需积分
- * 公式：duration × basePerSecond × (resolution==='1080p' ? hdMultiplier : 1)
- * 积分规则从数据库读取（后台可改）
- */
 function calcPointsCost({ duration, resolution }) {
   const dur = parseInt(duration, 10) || 5;
   const { basePerSecond, hdMultiplier } = settings.get('videoPoints');
@@ -35,7 +29,7 @@ function serializeTask(row) {
   try { params = row.params ? JSON.parse(row.params) : {}; } catch {}
   return {
     id: row.id,
-    taskId: row.id,                 // 兼容字段：本地任务 ID
+    taskId: row.id,
     arkTaskId: row.ark_task_id,
     provider: row.provider,
     model: row.model,
@@ -51,10 +45,6 @@ function serializeTask(row) {
   };
 }
 
-/**
- * 创建视频生成任务
- * 流程：校验积分 → 预扣积分 → 调用方舟建任务 → 入库
- */
 router.post('/generate', authRequired, async (req, res) => {
   const { prompt, imageUrl, duration, resolution, ratio, watermark, seed, model } = req.body || {};
 
@@ -62,9 +52,8 @@ router.post('/generate', authRequired, async (req, res) => {
     return res.status(400).json({ error: '提示词和参考图至少需要提供一项' });
   }
 
-  // 1. 计算积分并校验余额
   const pointsCost = calcPointsCost({ duration, resolution });
-  const userRow = db.prepare('SELECT points FROM users WHERE id = ?').get(req.user.id);
+  const userRow = await db.get('SELECT points FROM users WHERE id = ?', req.user.id);
   if (!userRow) {
     return res.status(404).json({ error: '用户不存在' });
   }
@@ -76,123 +65,76 @@ router.post('/generate', authRequired, async (req, res) => {
     });
   }
 
-  // 2. 预扣积分
-  db.prepare(`
-    UPDATE users SET points = points - ?, updated_at = strftime('%s','now') * 1000 WHERE id = ?
-  `).run(pointsCost, req.user.id);
+  const now = Date.now();
+  await db.run('UPDATE users SET points = points - ?, updated_at = ? WHERE id = ?', pointsCost, now, req.user.id);
 
-  // 3. 调用方舟建任务
   let arkTask;
   try {
-    arkTask = await createVideoTask({
-      prompt,
-      imageUrl,
-      duration,
-      resolution,
-      ratio,
-      watermark,
-      seed,
-      model,
-    });
+    arkTask = await createVideoTask({ prompt, imageUrl, duration, resolution, ratio, watermark, seed, model });
   } catch (err) {
-    // 建任务失败 → 退还预扣积分
-    db.prepare(`
-      UPDATE users SET points = points + ?, updated_at = strftime('%s','now') * 1000 WHERE id = ?
-    `).run(pointsCost, req.user.id);
+    await db.run('UPDATE users SET points = points + ?, updated_at = ? WHERE id = ?', pointsCost, Date.now(), req.user.id);
     return res.status(502).json({ error: err.message || '调用方舟创建任务失败' });
   }
 
-  // 4. 入库
   const params = { duration, resolution, ratio, watermark, seed };
-  const info = db.prepare(`
-    INSERT INTO video_tasks (user_id, ark_task_id, provider, model, prompt, params, status, points_cost)
-    VALUES (?, ?, 'seedance', ?, ?, ?, 'queued', ?)
-  `).run(
-    req.user.id,
-    arkTask.taskId,
+  const info = await db.run(
+    'INSERT INTO video_tasks (user_id, ark_task_id, provider, model, prompt, params, status, points_cost) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    req.user.id, arkTask.taskId, 'seedance',
     arkTask.model || (settings.get('ark') || {}).defaultModel,
-    prompt || '',
-    JSON.stringify(params),
-    pointsCost
+    prompt || '', JSON.stringify(params), 'queued', pointsCost
   );
 
-  const row = db.prepare('SELECT * FROM video_tasks WHERE id = ?').get(info.lastInsertRowid);
-  const remaining = db.prepare('SELECT points FROM users WHERE id = ?').get(req.user.id).points;
+  const row = await db.get('SELECT * FROM video_tasks WHERE id = ?', info.lastInsertRowid);
+  const remainingRow = await db.get('SELECT points FROM users WHERE id = ?', req.user.id);
 
   res.status(201).json({
     ...serializeTask(row),
-    pointsRemaining: remaining,
+    pointsRemaining: remainingRow.points,
   });
 });
 
-/**
- * 查询任务状态（代理方舟；若方舟任务失败且未退还，则自动退还积分）
- */
 router.get('/tasks/:taskId', authRequired, async (req, res) => {
-  const row = db.prepare('SELECT * FROM video_tasks WHERE id = ? AND user_id = ?').get(
-    req.params.taskId,
-    req.user.id
-  );
+  const row = await db.get('SELECT * FROM video_tasks WHERE id = ? AND user_id = ?', req.params.taskId, req.user.id);
   if (!row) {
     return res.status(404).json({ error: '任务不存在' });
   }
 
-  // 终态直接返回本地记录
   if (row.status === 'succeeded' || (row.status === 'failed' && row.refunded)) {
     return res.json(serializeTask(row));
   }
 
-  // 未到终态或失败未退还 → 查询方舟
   if (!row.ark_task_id) {
     return res.json(serializeTask(row));
   }
 
   try {
     const arkTask = await getVideoTask(row.ark_task_id);
-    const status = arkTask.status; // queued|running|succeeded|failed
+    const status = arkTask.status;
     const videoUrl = status === 'succeeded' ? (arkTask.content?.video_url || null) : null;
     const errorMsg = status === 'failed' ? (arkTask.error?.message || '视频生成失败') : null;
+    const now = Date.now();
 
     if (status === 'succeeded') {
-      db.prepare(`
-        UPDATE video_tasks
-        SET status = 'succeeded', video_url = ?, updated_at = strftime('%s','now') * 1000
-        WHERE id = ?
-      `).run(videoUrl, row.id);
+      await db.run('UPDATE video_tasks SET status = ?, video_url = ?, updated_at = ? WHERE id = ?', 'succeeded', videoUrl, now, row.id);
     } else if (status === 'failed') {
-      // 失败且未退还 → 退还积分
       if (!row.refunded) {
-        db.prepare(`
-          UPDATE users SET points = points + ?, updated_at = strftime('%s','now') * 1000 WHERE id = ?
-        `).run(row.points_cost, row.user_id);
+        await db.run('UPDATE users SET points = points + ?, updated_at = ? WHERE id = ?', row.points_cost, now, row.user_id);
       }
-      db.prepare(`
-        UPDATE video_tasks
-        SET status = 'failed', error = ?, refunded = 1, updated_at = strftime('%s','now') * 1000
-        WHERE id = ?
-      `).run(errorMsg, row.id);
+      await db.run('UPDATE video_tasks SET status = ?, error = ?, refunded = ?, updated_at = ? WHERE id = ?', 'failed', errorMsg, 1, now, row.id);
     } else {
-      // queued / running
-      db.prepare(`
-        UPDATE video_tasks SET status = ?, updated_at = strftime('%s','now') * 1000 WHERE id = ?
-      `).run(status, row.id);
+      await db.run('UPDATE video_tasks SET status = ?, updated_at = ? WHERE id = ?', status, now, row.id);
     }
 
-    const updated = db.prepare('SELECT * FROM video_tasks WHERE id = ?').get(row.id);
-    const remaining = db.prepare('SELECT points FROM users WHERE id = ?').get(req.user.id).points;
-    res.json({ ...serializeTask(updated), pointsRemaining: remaining });
+    const updated = await db.get('SELECT * FROM video_tasks WHERE id = ?', row.id);
+    const remainingRow = await db.get('SELECT points FROM users WHERE id = ?', req.user.id);
+    res.json({ ...serializeTask(updated), pointsRemaining: remainingRow.points });
   } catch (err) {
     res.status(502).json({ error: err.message || '查询方舟任务失败' });
   }
 });
 
-/**
- * 当前用户的历史任务
- */
-router.get('/history', authRequired, (req, res) => {
-  const rows = db.prepare(`
-    SELECT * FROM video_tasks WHERE user_id = ? ORDER BY created_at DESC LIMIT 50
-  `).all(req.user.id);
+router.get('/history', authRequired, async (req, res) => {
+  const rows = await db.all('SELECT * FROM video_tasks WHERE user_id = ? ORDER BY created_at DESC LIMIT 50', req.user.id);
   res.json(rows.map(serializeTask));
 });
 
