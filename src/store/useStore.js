@@ -230,11 +230,25 @@ export const useStore = create((set, get) => ({
   videoGenStatus: 'idle',    // 'idle' | 'queued' | 'running' | 'downloading' | 'error'
   videoGenError: null,
   videoProgress: { stage: null, status: null },
+  seedanceModels: [],        // 后台维护的内置 Seedance 模型列表 [{ id, name, desc }]
 
   // 选择参考图（图生视频）
   selectReferenceImage: async () => {
     const result = await bridge.video.selectImage();
     return result; // { path, dataUrl } 或 null
+  },
+
+  // 拉取后台维护的内置 Seedance 模型列表
+  loadSeedanceModels: async () => {
+    try {
+      const data = await bridge.video.getModels();
+      const models = data?.models || [];
+      if (models.length) set({ seedanceModels: models });
+      return models;
+    } catch (err) {
+      console.error('加载 Seedance 模型列表失败:', err);
+      return [];
+    }
   },
 
   // 选择视频保存目录

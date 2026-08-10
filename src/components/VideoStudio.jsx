@@ -15,11 +15,35 @@ const RATIOS = [
   { value: '3:4', label: '竖屏 3:4' },
   { value: '21:9', label: '宽屏 21:9' },
 ];
-// 内置 Seedance 可选模型
-const SEEDANCE_MODELS = [
-  { value: 'doubao-seedance-2-0-pro', label: 'Seedance 2.0 Pro', desc: '更高质量' },
-  { value: 'doubao-seedance-2-0-fast', label: 'Seedance 2.0 Fast', desc: '更快速度' },
+// 内置 Seedance 默认模型列表（与服务端默认一致，作为服务器不可达时的兜底）
+// 同时覆盖 1.0 / 2.0 系列；1.0 区分 t2v / i2v
+const DEFAULT_SEEDANCE_MODELS = [
+  { id: 'doubao-seedance-2-0-pro', name: 'Seedance 2.0 Pro', desc: '更高质量' },
+  { id: 'doubao-seedance-2-0-fast', name: 'Seedance 2.0 Fast', desc: '更快速度' },
+  { id: 'seedance-1-0-pro-t2v', name: 'Seedance 1.0 Pro 文生视频', desc: '1.0 Pro 文生视频' },
+  { id: 'seedance-1-0-pro-i2v', name: 'Seedance 1.0 Pro 图生视频', desc: '1.0 Pro 图生视频' },
+  { id: 'seedance-1-0-lite-t2v', name: 'Seedance 1.0 Lite 文生视频', desc: '1.0 Lite 文生视频' },
+  { id: 'seedance-1-0-lite-i2v', name: 'Seedance 1.0 Lite 图生视频', desc: '1.0 Lite 图生视频' },
 ];
+
+// 自定义 AI 模式常用模型快捷预设（方舟兼容视频生成模型）
+const CUSTOM_MODEL_PRESETS = [
+  { id: 'doubao-seedance-2-0-pro', name: 'Seedance 2.0 Pro' },
+  { id: 'doubao-seedance-2-0-fast', name: 'Seedance 2.0 Fast' },
+  { id: 'seedance-1-0-pro-t2v', name: 'Seedance 1.0 Pro 文生' },
+  { id: 'seedance-1-0-pro-i2v', name: 'Seedance 1.0 Pro 图生' },
+  { id: 'seedance-1-0-lite-t2v', name: 'Seedance 1.0 Lite 文生' },
+  { id: 'seedance-1-0-lite-i2v', name: 'Seedance 1.0 Lite 图生' },
+];
+
+// 判断模型 ID 是否仅支持文生视频（t2v 后缀）
+function isT2VOnly(modelId) {
+  return typeof modelId === 'string' && /-t2v$/i.test(modelId);
+}
+// 判断模型 ID 是否仅支持图生视频（i2v 后缀）
+function isI2VOnly(modelId) {
+  return typeof modelId === 'string' && /-i2v$/i.test(modelId);
+}
 
 // 积分预估：duration × 2 × (1080p ? 2 : 1)
 function calcPointsCost(duration, resolution) {
@@ -40,6 +64,8 @@ export default function VideoStudio() {
   const selectReferenceImage = useStore((s) => s.selectReferenceImage);
   const openVideoInFolder = useStore((s) => s.openVideoInFolder);
   const setActiveView = useStore((s) => s.setActiveView);
+  const seedanceModels = useStore((s) => s.seedanceModels);
+  const loadSeedanceModels = useStore((s) => s.loadSeedanceModels);
 
   const [mode, setMode] = useState('text'); // 'text' | 'image'
   const [prompt, setPrompt] = useState('');
@@ -52,7 +78,27 @@ export default function VideoStudio() {
   const [seed, setSeed] = useState(-1);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
-  // 初始化配置
+  // 自定义 AI 模式：模型选择（本地态，选择时持久化到配置）
+  const [customModel, setCustomModel] = useState('');
+  const [customInputMode, setCustomInputMode] = useState(false); // 是否显示自定义输入框
+  const [customInputValue, setCustomInputValue] = useState('');
+
+  // 实际使用的模型列表：优先用服务器返回的，兜底用本地默认
+  const allSeedanceModels = (seedanceModels && seedanceModels.length)
+    ? seedanceModels
+    : DEFAULT_SEEDANCE_MODELS;
+  // 按当前文生/图生模式过滤：1.0 的 t2v/i2v 模型各自只支持一种模式
+  const availableSeedanceModels = allSeedanceModels.filter((m) => {
+    if (mode === 'image') return !isT2VOnly(m.id);
+    return !isI2VOnly(m.id);
+  });
+  // 自定义 AI 模式可用预设模型（同样按 t2v/i2v 过滤）
+  const availableCustomModels = CUSTOM_MODEL_PRESETS.filter((m) => {
+    if (mode === 'image') return !isT2VOnly(m.id);
+    return !isI2VOnly(m.id);
+  });
+
+  // 初始化配置 + 拉取模型列表
   useEffect(() => {
     (async () => {
       const config = await loadAppConfig();
@@ -65,7 +111,35 @@ export default function VideoStudio() {
         setSeed(vd.seed ?? -1);
       }
     })();
+    loadSeedanceModels();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 模式切换时，若当前选中的模型在新模式下不可用，则回退到 2.0 Pro
+  useEffect(() => {
+    if (isT2VOnly(seedanceModel) && mode === 'image') {
+      setSeedanceModel('doubao-seedance-2-0-pro');
+    } else if (isI2VOnly(seedanceModel) && mode === 'text') {
+      setSeedanceModel('doubao-seedance-2-0-pro');
+    }
+    // 自定义模式：若当前选中模型在新模式下不可用且非自定义输入，回退到 2.0 Pro
+    if (isCustom && !customInputMode) {
+      if (isT2VOnly(customModel) && mode === 'image') {
+        handleSelectCustomModel('doubao-seedance-2-0-pro');
+      } else if (isI2VOnly(customModel) && mode === 'text') {
+        handleSelectCustomModel('doubao-seedance-2-0-pro');
+      }
+    }
+  }, [mode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 自定义模式：从配置同步模型 ID 到本地态
+  // 若配置的模型不在预设列表中，自动切换到「自定义输入」模式
+  useEffect(() => {
+    const configured = appConfig?.customVideo?.modelId || '';
+    setCustomModel(configured);
+    setCustomInputValue(configured);
+    const isPreset = CUSTOM_MODEL_PRESETS.some((p) => p.id === configured);
+    setCustomInputMode(!!configured && !isPreset);
+  }, [appConfig?.customVideo?.modelId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const provider = appConfig?.videoProvider || 'seedance';
   const isCustom = provider === 'custom';
@@ -97,6 +171,27 @@ export default function VideoStudio() {
     await saveAppConfig({ videoProvider: p });
   };
 
+  // 自定义模式：选择预设模型（持久化到配置）
+  const handleSelectCustomModel = async (modelId) => {
+    setCustomModel(modelId);
+    setCustomInputMode(false);
+    setCustomInputValue(modelId);
+    await saveAppConfig({ customVideo: { modelId } });
+  };
+
+  // 自定义模式：应用手动输入的模型 ID
+  const handleApplyCustomModel = async () => {
+    const val = customInputValue.trim();
+    if (!val) return;
+    setCustomModel(val);
+    await saveAppConfig({ customVideo: { modelId: val } });
+  };
+
+  // 自定义模式：切换到自定义输入
+  const handleSwitchToCustomInput = () => {
+    setCustomInputMode(true);
+  };
+
   const handleGenerate = async () => {
     if (!prompt.trim() && !refImage) return;
     if (isCustom && !customReady) {
@@ -112,8 +207,8 @@ export default function VideoStudio() {
       mode,
       prompt: prompt.trim(),
       imageUrl: mode === 'image' ? refImage?.dataUrl : undefined,
-      // 内置模式用 UI 选择的 Seedance 模型；自定义模式用配置中的 modelId；ComfyUI 无需 model
-      model: isCustom ? appConfig.customVideo.modelId : (isComfyui ? undefined : seedanceModel),
+      // 内置模式用 UI 选择的 Seedance 模型；自定义模式用 UI 选择/配置的 modelId；ComfyUI 无需 model
+      model: isCustom ? (customModel || appConfig?.customVideo?.modelId) : (isComfyui ? undefined : seedanceModel),
       duration,
       resolution,
       ratio,
@@ -136,10 +231,12 @@ export default function VideoStudio() {
   }[videoProgress.stage || videoGenStatus] || '';
 
   const currentModelLabel = isCustom
-    ? (appConfig?.customVideo?.modelId || '未配置')
+    ? (customModel
+      ? (CUSTOM_MODEL_PRESETS.find((p) => p.id === customModel)?.name || customModel)
+      : '未配置')
     : isComfyui
       ? 'ComfyUI 本地'
-      : (SEEDANCE_MODELS.find((m) => m.value === seedanceModel)?.label || seedanceModel);
+      : (allSeedanceModels.find((m) => m.id === seedanceModel)?.name || seedanceModel);
 
   return (
     <div className="panel video-studio">
@@ -336,66 +433,122 @@ export default function VideoStudio() {
           </button>
           {showAdvanced && (
             <div className="video-advanced">
-              {/* 内置模式可选 Seedance 模型；自定义模式显示配置的 modelId；ComfyUI 由工作流决定 */}
-              {!isCustom && !isComfyui && (
-                <div className="param-row">
-                  <span className="param-label">模型</span>
-                  <div className="param-options">
-                    {SEEDANCE_MODELS.map((m) => (
-                      <button
-                        key={m.value}
-                        className={`param-option ${seedanceModel === m.value ? 'param-option--active' : ''}`}
-                        onClick={() => setSeedanceModel(m.value)}
-                        disabled={isGenerating}
-                        title={m.desc}
-                      >
-                        {m.label}
-                      </button>
-                    ))}
+              {/* ===== 模型选择 ===== */}
+              <div className="video-advanced-section">
+                <span className="video-advanced-section-title">模型</span>
+
+                {/* 内置 Seedance 模式：按钮选择 */}
+                {!isCustom && !isComfyui && (
+                  <div className="video-advanced-field">
+                    <div className="param-options">
+                      {availableSeedanceModels.map((m) => (
+                        <button
+                          key={m.id}
+                          className={`param-option ${seedanceModel === m.id ? 'param-option--active' : ''}`}
+                          onClick={() => setSeedanceModel(m.id)}
+                          disabled={isGenerating}
+                          title={m.desc || m.name}
+                        >
+                          {m.name}
+                        </button>
+                      ))}
+                    </div>
+                    <span className="video-advanced-hint">
+                      {mode === 'image' ? '图生模式下仅显示支持图生的模型' : '文生模式下仅显示支持文生的模型'}
+                    </span>
                   </div>
-                </div>
-              )}
-              {isCustom && (
-                <div className="param-row">
-                  <span className="param-label">模型 ID</span>
-                  <span className="param-hint">{appConfig?.customVideo?.modelId || '未配置（请在设置中填写）'}</span>
-                </div>
-              )}
-              {isComfyui && (
-                <div className="param-row">
-                  <span className="param-label">工作流</span>
-                  <span className="param-hint">
-                    {appConfig?.comfyui?.workflow?.trim() ? '已配置（参数通过占位符注入工作流）' : '未配置（请在设置中填写）'}
+                )}
+
+                {/* 自定义 AI 模式：预设按钮 + 自定义输入 */}
+                {isCustom && (
+                  <div className="video-advanced-field">
+                    <div className="param-options">
+                      {availableCustomModels.map((m) => (
+                        <button
+                          key={m.id}
+                          className={`param-option ${!customInputMode && customModel === m.id ? 'param-option--active' : ''}`}
+                          onClick={() => handleSelectCustomModel(m.id)}
+                          disabled={isGenerating}
+                          title={m.id}
+                        >
+                          {m.name}
+                        </button>
+                      ))}
+                      <button
+                        className={`param-option param-option--custom ${customInputMode ? 'param-option--active' : ''}`}
+                        onClick={handleSwitchToCustomInput}
+                        disabled={isGenerating}
+                      >
+                        自定义...
+                      </button>
+                    </div>
+                    {customInputMode && (
+                      <div className="custom-model-input-row">
+                        <input
+                          type="text"
+                          className="custom-model-input"
+                          value={customInputValue}
+                          onChange={(e) => setCustomInputValue(e.target.value)}
+                          onBlur={handleApplyCustomModel}
+                          onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                          placeholder="输入模型 ID，如 doubao-seedance-2-0-pro"
+                          disabled={isGenerating}
+                        />
+                      </div>
+                    )}
+                    <span className="video-advanced-hint">
+                      {mode === 'image' ? '图生模式下仅显示支持图生的模型，' : '文生模式下仅显示支持文生的模型，'}
+                      点击「自定义」可输入其他模型 ID
+                    </span>
+                  </div>
+                )}
+
+                {/* ComfyUI 模式：显示工作流配置状态 */}
+                {isComfyui && (
+                  <div className="video-advanced-field">
+                    <span className="video-advanced-hint">
+                      {appConfig?.comfyui?.workflow?.trim()
+                        ? '已配置工作流（参数通过占位符注入）'
+                        : '未配置工作流（请在设置中填写）'}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* ===== 输出选项 ===== */}
+              <div className="video-advanced-section">
+                <span className="video-advanced-section-title">输出选项</span>
+
+                {/* 水印：仅方舟模式支持；ComfyUI 由工作流节点控制 */}
+                {!isComfyui && (
+                  <div className="video-advanced-field video-advanced-field--inline">
+                    <span className="video-advanced-field-label">水印</span>
+                    <button
+                      className={`param-toggle ${watermark ? 'param-toggle--on' : ''}`}
+                      onClick={() => setWatermark(!watermark)}
+                      disabled={isGenerating}
+                    >
+                      <span className="param-toggle-knob" />
+                    </button>
+                  </div>
+                )}
+
+                {/* 随机种子 */}
+                <div className="video-advanced-field video-advanced-field--inline">
+                  <span className="video-advanced-field-label">随机种子</span>
+                  <input
+                    type="number"
+                    className="seed-input"
+                    value={seed}
+                    onChange={(e) => setSeed(parseInt(e.target.value) || -1)}
+                    min={-1}
+                    max={999999999}
+                    disabled={isGenerating}
+                  />
+                  <span className="video-advanced-hint video-advanced-hint--inline">
+                    {isComfyui ? '-1 随机（注入 {{seed}}）' : '-1 = 随机'}
                   </span>
                 </div>
-              )}
-              {/* 水印仅方舟模式支持；ComfyUI 由工作流节点控制 */}
-              {!isComfyui && (
-                <div className="param-row">
-                  <span className="param-label">水印</span>
-                  <button
-                    className={`param-toggle ${watermark ? 'param-toggle--on' : ''}`}
-                    onClick={() => setWatermark(!watermark)}
-                    disabled={isGenerating}
-                  >
-                    <span className="param-toggle-knob" />
-                  </button>
-                </div>
-              )}
-              <div className="param-row">
-                <span className="param-label">随机种子</span>
-                <input
-                  type="number"
-                  className="seed-input"
-                  value={seed}
-                  onChange={(e) => setSeed(parseInt(e.target.value) || -1)}
-                  min={-1}
-                  max={999999999}
-                  disabled={isGenerating}
-                />
-                <span className="param-hint">
-                  {isComfyui ? '-1 随机（注入 {{seed}}）' : '-1 = 随机'}
-                </span>
               </div>
             </div>
           )}

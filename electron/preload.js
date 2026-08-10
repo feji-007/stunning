@@ -65,6 +65,8 @@ contextBridge.exposeInMainWorld('api', {
     openFolder: (folderPath) => ipcRenderer.invoke('video:open-folder', folderPath),
     // 历史任务（仅内置 Seedance 模式记录在服务器）
     getHistory: () => ipcRenderer.invoke('video:history'),
+    // 拉取后台维护的内置 Seedance 模型列表
+    getModels: () => ipcRenderer.invoke('video:get-models'),
 
     // 生成视频（流式）
     // params: { provider, prompt, imageUrl, duration, resolution, ratio, watermark, seed, model }
@@ -72,6 +74,8 @@ contextBridge.exposeInMainWorld('api', {
     cancel: () => ipcRenderer.invoke('video:cancel'),
     // 测试 ComfyUI 连通性
     testComfyui: (baseURL) => ipcRenderer.invoke('video:test-comfyui', baseURL),
+    // 测试自定义视频生成 AI 连通性（baseURL, apiKey, modelId?）
+    testCustom: (baseURL, apiKey, modelId) => ipcRenderer.invoke('video:test-custom', baseURL, apiKey, modelId),
 
     // 事件订阅，均返回取消监听函数
     onProgress: (cb) => {
