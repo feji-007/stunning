@@ -98,6 +98,9 @@ function registerIpcHandlers() {
   // 历史任务（来自服务器，仅内置 Seedance 模式有记录）
   ipcMain.handle('video:history', () => serverClient.getVideoHistory());
 
+  // 拉取后台维护的内置 Seedance 模型列表
+  ipcMain.handle('video:get-models', () => serverClient.getVideoModels());
+
   // 生成视频
   // 通过 event.sender 推送 video:progress / video:success / video:error 事件
   ipcMain.handle('video:generate', async (event, params) => {
@@ -126,6 +129,11 @@ function registerIpcHandlers() {
 
   // 测试 ComfyUI 连通性（设置页「测试连接」按钮调用）
   ipcMain.handle('video:test-comfyui', (_e, baseURL) => videoService.testComfyuiConnection(baseURL));
+
+  // 测试自定义视频生成 AI 连通性（设置页「测试连通性」按钮调用）
+  ipcMain.handle('video:test-custom', (_e, baseURL, apiKey, modelId) =>
+    videoService.testCustomConnection(baseURL, apiKey, modelId)
+  );
 }
 
 module.exports = { registerIpcHandlers };

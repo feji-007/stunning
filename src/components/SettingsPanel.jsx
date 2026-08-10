@@ -6,6 +6,16 @@ import {
   Sparkles, Wand2, Coins, Cpu, Loader2, CheckCircle2, AlertCircle,
 } from 'lucide-react';
 
+// 自定义 AI 模式常用模型快捷预设（方舟兼容视频生成模型）
+const CUSTOM_MODEL_PRESETS = [
+  { id: 'doubao-seedance-2-0-pro', name: 'Seedance 2.0 Pro' },
+  { id: 'doubao-seedance-2-0-fast', name: 'Seedance 2.0 Fast' },
+  { id: 'seedance-1-0-pro-t2v', name: 'Seedance 1.0 Pro 文生视频' },
+  { id: 'seedance-1-0-pro-i2v', name: 'Seedance 1.0 Pro 图生视频' },
+  { id: 'seedance-1-0-lite-t2v', name: 'Seedance 1.0 Lite 文生视频' },
+  { id: 'seedance-1-0-lite-i2v', name: 'Seedance 1.0 Lite 图生视频' },
+];
+
 export default function SettingsPanel() {
   const appConfig = useStore((s) => s.appConfig);
   const user = useStore((s) => s.user);
@@ -18,6 +28,9 @@ export default function SettingsPanel() {
   const [apiKeyInput, setApiKeyInput] = useState(appConfig?.customVideo?.apiKey || '');
   const [modelIdInput, setModelIdInput] = useState(appConfig?.customVideo?.modelId || '');
   const [savedFlash, setSavedFlash] = useState(false);
+  // 自定义 AI 连通性测试状态
+  const [customTestState, setCustomTestState] = useState('idle'); // 'idle' | 'testing' | 'ok' | 'fail'
+  const [customTestMsg, setCustomTestMsg] = useState('');
 
   // ComfyUI 本地输入态
   const [comfyuiBaseInput, setComfyuiBaseInput] = useState(appConfig?.comfyui?.baseURL || '');
@@ -40,6 +53,36 @@ export default function SettingsPanel() {
     });
     setSavedFlash(true);
     setTimeout(() => setSavedFlash(false), 1800);
+  };
+
+  // 测试自定义 AI 连通性（调用方舟 /models 接口验证 API Key）
+  const handleTestCustom = async () => {
+    setCustomTestState('testing');
+    setCustomTestMsg('');
+    try {
+      // 优先用输入框中的值，未输入则用已保存的配置（便于测试已保存的 key）
+      const base = baseURLInput.trim() || appConfig?.customVideo?.baseURL || '';
+      const key = apiKeyInput.trim() || appConfig?.customVideo?.apiKey || '';
+      const model = modelIdInput.trim() || appConfig?.customVideo?.modelId || '';
+      const res = await bridge.video.testCustom(base, key, model);
+      const modelCount = res?.modelCount;
+      const matched = res?.modelMatched;
+      let msg = '连接成功';
+      if (modelCount != null) msg += `，可访问 ${modelCount} 个模型`;
+      if (model && matched === false) msg += `；注意：当前模型 ID「${model}」未在返回列表中找到，请确认是否已开通`;
+      setCustomTestState('ok');
+      setCustomTestMsg(msg);
+    } catch (err) {
+      setCustomTestState('fail');
+      setCustomTestMsg(err?.message || '连接失败');
+    }
+  };
+
+  // 快速选择预设模型 ID
+  const handlePickPreset = (presetId) => {
+    setModelIdInput(presetId);
+    setCustomTestState('idle');
+    setCustomTestMsg('');
   };
 
   const handleSelectProvider = async (p) => {
@@ -151,7 +194,7 @@ export default function SettingsPanel() {
                 type="text"
                 className="video-apikey-input"
                 value={baseURLInput}
-                onChange={(e) => setBaseURLInput(e.target.value)}
+                onChange={(e) => { setBaseURLInput(e.target.value); setCustomTestState('idle'); setCustomTestMsg(''); }}
                 placeholder="https://ark.cn-beijing.volces.com/api/v3"
               />
             </div>
@@ -165,7 +208,7 @@ export default function SettingsPanel() {
                 type="password"
                 className="video-apikey-input"
                 value={apiKeyInput}
-                onChange={(e) => setApiKeyInput(e.target.value)}
+                onChange={(e) => { setApiKeyInput(e.target.value); setCustomTestState('idle'); setCustomTestMsg(''); }}
                 placeholder={appConfig?.customVideo?.apiKey ? '已配置（重新输入可覆盖）' : '输入方舟 API Key'}
               />
               {appConfig?.customVideo?.apiKey && (
@@ -183,13 +226,27 @@ export default function SettingsPanel() {
                 type="text"
                 className="video-apikey-input"
                 value={modelIdInput}
-                onChange={(e) => setModelIdInput(e.target.value)}
+                onChange={(e) => { setModelIdInput(e.target.value); setCustomTestState('idle'); setCustomTestMsg(''); }}
                 placeholder="doubao-seedance-2-0-pro"
               />
-              <p className="field-hint">火山引擎方舟的视频生成模型 ID，如 doubao-seedance-2-0-pro</p>
+              <p className="field-hint">火山引擎方舟的视频生成模型 ID，如 doubao-seedance-2-0-pro、seedance-1-0-pro-i2v</p>
+              {/* 模型快捷预设 */}
+              <div className="comfyui-url-row" style={{ marginTop: 8, flexWrap: 'wrap', gap: 6 }}>
+                {CUSTOM_MODEL_PRESETS.map((p) => (
+                  <button
+                    key={p.id}
+                    className={`btn btn-secondary ${modelIdInput.trim() === p.id ? 'btn-primary' : ''}`}
+                    style={{ padding: '4px 10px', fontSize: 12 }}
+                    onClick={() => handlePickPreset(p.id)}
+                    title={p.id}
+                  >
+                    <span>{p.name}</span>
+                  </button>
+                ))}
+              </div>
             </div>
 
-            <div className="video-apikey-input-row" style={{ marginTop: 12 }}>
+            <div className="video-apikey-input-row" style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <button
                 className="btn btn-primary"
                 onClick={handleSaveCustom}
@@ -198,6 +255,30 @@ export default function SettingsPanel() {
                 {savedFlash ? <Check size={15} /> : <Save size={15} />}
                 <span>{savedFlash ? '已保存' : '保存配置'}</span>
               </button>
+              <button
+                className="btn btn-secondary"
+                onClick={handleTestCustom}
+                disabled={
+                  customTestState === 'testing' ||
+                  (!baseURLInput.trim() && !appConfig?.customVideo?.baseURL) ||
+                  (!apiKeyInput.trim() && !appConfig?.customVideo?.apiKey)
+                }
+              >
+                {customTestState === 'testing' ? <Loader2 size={15} className="spin" /> : <Key size={15} />}
+                <span>{customTestState === 'testing' ? '测试中' : '测试连通性'}</span>
+              </button>
+              {customTestState === 'ok' && (
+                <span className="field-hint comfyui-test-ok" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <CheckCircle2 size={13} />
+                  <span>{customTestMsg}</span>
+                </span>
+              )}
+              {customTestState === 'fail' && (
+                <span className="field-hint comfyui-test-fail" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <AlertCircle size={13} />
+                  <span>{customTestMsg}</span>
+                </span>
+              )}
             </div>
 
             <p className="field-hint" style={{ marginTop: 12 }}>
@@ -209,7 +290,7 @@ export default function SettingsPanel() {
               >
                 火山引擎方舟控制台 <ExternalLink size={11} />
               </a>
-              创建 API Key，并确保已开通视频生成模型。
+              创建 API Key，并确保已开通视频生成模型。点击「测试连通性」可验证 API Key 是否有效。
             </p>
           </div>
         )}

@@ -1272,12 +1272,82 @@ body {
   background: var(--bg-base);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: 12px;
+  padding: 16px;
   margin: 8px 0 16px;
   display: flex;
   flex-direction: column;
+  gap: 16px;
+}
+
+/* 高级参数分区 */
+.video-advanced-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.video-advanced-section + .video-advanced-section {
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.video-advanced-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
+}
+
+/* 高级参数字段 */
+.video-advanced-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.video-advanced-field--inline {
+  flex-direction: row;
+  align-items: center;
   gap: 12px;
 }
+.video-advanced-field-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  width: 60px;
+  flex-shrink: 0;
+}
+.video-advanced-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+.video-advanced-hint--inline {
+  margin-left: 0;
+}
+
+/* 自定义模型输入 */
+.param-option--custom {
+  border-style: dashed;
+}
+.custom-model-input-row {
+  margin-top: 4px;
+}
+.custom-model-input {
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 7px 10px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.custom-model-input:focus {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-glow);
+}
+.custom-model-input::placeholder { color: var(--text-muted); }
 
 /* 开关 */
 .param-toggle {

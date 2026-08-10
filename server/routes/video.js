@@ -196,4 +196,13 @@ router.get('/history', authRequired, (req, res) => {
   res.json(rows.map(serializeTask));
 });
 
+/**
+ * 可选 Seedance 模型列表（公开接口，需登录）
+ * 供客户端动态拉取后台维护的内置模型列表
+ */
+router.get('/models', authRequired, (_req, res) => {
+  const models = settings.get('seedanceModels') || [];
+  res.json({ models });
+});
+
 module.exports = router;

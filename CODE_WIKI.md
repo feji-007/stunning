@@ -2,7 +2,7 @@
 
 > AI 视频生成桌面应用（Electron + React）
 >
-> 支持内置 Seedance 2.0（消耗积分）与自定义视频生成 AI（自带 Key，方舟 API 兼容格式）。
+> 支持内置 Seedance（1.0 / 2.0 系列，消耗积分）与自定义视频生成 AI（自带 Key，方舟 API 兼容格式，支持连通性测试）。
 >
 > 本文档基于重构后的源码生成，仅涵盖视频生成相关架构与模块说明。
 
@@ -31,8 +31,8 @@
 
 | 模式 | 实现方式 | Key 归属 | 积分 |
 |------|----------|----------|------|
-| **内置 Seedance 2.0** | 服务器调用火山引擎方舟 API（Seedance 2.0 Pro/Fast） | 服务器持有（`ARK_API_KEY`） | 消耗用户积分（失败自动退还） |
-| **自定义视频生成 AI** | 客户端直接调用用户配置的方舟兼容端点 | 用户自带（存本地配置） | 不消耗积分 |
+| **内置 Seedance** | 服务器调用火山引擎方舟 API（Seedance 1.0 / 2.0 系列，后台可配） | 服务器持有（`ARK_API_KEY`） | 消耗用户积分（失败自动退还） |
+| **自定义视频生成 AI** | 客户端直接调用用户配置的方舟兼容端点（含连通性测试） | 用户自带（存本地配置） | 不消耗积分 |
 
 应用采用 **客户端 + 独立后端服务器** 的架构：
 
@@ -99,7 +99,7 @@
 |------|---------------|-----------|
 | 触发位置 | 服务器 `routes/video.js` | 客户端 `videoService.js` |
 | 方舟 Key 来源 | `server/config.js` 的 `ARK_API_KEY` | 客户端 `configStore.js` 的 `customVideo.apiKey` |
-| 模型选择 | UI 选择（Pro / Fast） | 设置面板填写 `modelId` |
+| 模型选择 | UI 选择（后台维护的模型列表，含 1.0 / 2.0 系列，动态拉取） | 设置面板填写 `modelId`（含快捷预设） |
 | 积分 | 预扣 → 失败退还 | 不计积分 |
 | 任务记录 | 服务器 `video_tasks` 表 | 仅本地内存历史 |
 | 调用链路 | 客户端→服务器→方舟 | 客户端→方舟 |
@@ -191,8 +191,11 @@ stunning/
 | `video:select-image` | 打开文件对话框选参考图，返回 `{ path, dataUrl }`（base64） |
 | `video:select-output-dir` / `video:output-dir` / `video:open-folder` | 视频输出目录管理 |
 | `video:history` | 拉取服务器端任务历史（仅内置模式有记录） |
+| `video:get-models` | 拉取后台维护的内置 Seedance 模型列表（含 1.0 / 2.0 系列） |
 | `video:generate` | 视频生成主入口，内部按 `provider` 分发；通过 `event.sender` 推送进度/成功/失败事件 |
 | `video:cancel` | 取消当前生成（中断轮询） |
+| `video:test-comfyui` | 测试 ComfyUI 连通性 |
+| `video:test-custom` | 测试自定义 AI 连通性（验证 Base URL + API Key + 可选模型校验） |
 
 所有通过 `event.sender` 推送事件前都检查 `sender.isDestroyed()`，避免窗口关闭后发送报错。
 
@@ -251,6 +254,8 @@ GET  /contents/generations/tasks/{task_id}  轮询状态
 | `pollUntilDone(pollFn, onProgress, polling)` | 通用轮询：3s 间隔、10 分钟超时、支持取消；状态变化时回调 `onProgress` |
 | `downloadVideo(videoUrl, filename)` | 下载视频到 `getVideoOutputDir()`，文件名清洗后存为 `.mp4` |
 | `readImageAsDataUrl(filePath)` | 读取本地图片为 base64 data URL（图生视频上传用） |
+| `testComfyuiConnection(baseURL)` | 测试 ComfyUI 连通性（GET `/system_stats`） |
+| `testCustomConnection(baseURL, apiKey, modelId?)` | 测试自定义 AI 连通性（GET `/models`，验证 API Key；若传 `modelId` 额外校验是否已开通） |
 | `cancel()` | 取消当前轮询（`clearTimeout` + 标记 `aborted`） |
 
 **模块级状态：** `activePolling`（当前轮询句柄，用于取消）。
@@ -435,15 +440,17 @@ generate(params, onProgress):
 | Sidebar | components/Sidebar.jsx | 品牌 + 导航（视频生成 / 设置） |
 | UserMenu | components/UserMenu.jsx | 右上角用户菜单：头像/昵称/积分、编辑资料（昵称+头像）、退出登录 |
 | VideoStudio | components/VideoStudio.jsx | **视频工作室**（核心）：提供商切换（内置/自定义）、文生/图生切换、参数面板（时长/分辨率/比例/模型/水印/种子）、积分预估、进度显示、最新结果预览、历史记录 |
-| SettingsPanel | components/SettingsPanel.jsx | **设置**：视频生成提供商选择、自定义 AI 配置（Base URL/API Key/模型 ID）、视频保存目录、积分规则说明 |
+| SettingsPanel | components/SettingsPanel.jsx | **设置**：视频生成提供商选择、自定义 AI 配置（Base URL/API Key/模型 ID + 连通性测试 + 模型快捷预设）、ComfyUI 配置（服务地址 + 工作流模板 + 连通性测试）、视频保存目录、积分规则说明 |
 
 ### 6.6 VideoStudio.jsx 关键设计
 
 - **提供商切换**：顶部 Tab 切换 `seedance` / `custom`，调用 `saveAppConfig({ videoProvider })` 持久化
 - **积分预估**：`calcPointsCost(duration, resolution) = duration × 2 × (1080p ? 2 : 1)`，实时显示「预计消耗 X 积分，当前剩余 Y 积分」，不足时禁用生成按钮
+- **模型列表动态拉取**：启动时通过 `GET /api/video/models` 拉取后台维护的内置 Seedance 模型列表（含 1.0 / 2.0 系列），服务器不可达时回退到本地默认列表
+- **文生/图生模式过滤**：Seedance 1.0 区分 t2v（文生）/ i2v（图生）模型，切换模式时自动过滤可用模型，当前选中模型不可用时回退到 2.0 Pro
 - **自定义模式未配置提示**：未填 API Key 时显示警告横幅，点击跳转设置
 - **文生/图生切换**：图生模式可选择参考图（PNG/JPG/WEBP/GIF），转 base64 上传
-- **高级参数**：内置模式可选 Seedance 模型（Pro/Fast）；水印开关；随机种子（-1 随机）
+- **高级参数**：内置模式可选 Seedance 模型（1.0 Pro/Lite × t2v/i2v + 2.0 Pro/Fast）；水印开关；随机种子（-1 随机）
 - **生成状态**：`queued` / `running` / `downloading` 三阶段进度条 + 取消按钮
 - **结果区**：最新生成视频内嵌播放器（autoplay/loop）+ 历史列表（缩略图 + 元数据 + 打开目录）
 
@@ -634,6 +641,7 @@ SQLite（`node:sqlite` `DatabaseSync`），WAL 模式，外键开启。
 | POST | `/api/video/generate` | 是 | **创建视频生成任务**（预扣积分 + 调方舟），返回 `{ taskId, arkTaskId, status, pointsCost, pointsRemaining }` |
 | GET | `/api/video/tasks/:taskId` | 是 | **查询任务状态**（代理方舟；失败自动退还积分），返回 `{ status, videoUrl, refunded, pointsRemaining }` |
 | GET | `/api/video/history` | 是 | 当前用户历史视频任务（限 50） |
+| GET | `/api/video/models` | 是 | 拉取后台维护的内置 Seedance 模型列表（含 1.0 / 2.0 系列），返回 `{ models: [{ id, name, desc }] }` |
 
 ### 11.2 方舟视频生成 API（两种模式共用）
 
@@ -641,9 +649,11 @@ SQLite（`node:sqlite` `DatabaseSync`），WAL 模式，外键开启。
 |------|------|------|
 | POST | `/contents/generations/tasks` | 创建视频生成任务，body 含 `model` / `content[]` / `duration` / `resolution` / `ratio` / `watermark` / `seed` |
 | GET | `/contents/generations/tasks/{task_id}` | 查询任务状态，成功后 `content.video_url` 为视频地址 |
+| GET | `/models` | 列出当前 API Key 可访问的模型列表（自定义模式连通性测试用） |
 
 - 内置模式：服务器 `arkService.js` 调用，Key = `ARK_API_KEY`
 - 自定义模式：客户端 `videoService.js` 调用，Key = 用户配置的 `customVideo.apiKey`
+- 连通性测试：客户端 `videoService.testCustomConnection` 调用 `GET /models` 验证 API Key 有效性，若提供 `modelId` 额外校验是否已开通
 
 ---
 

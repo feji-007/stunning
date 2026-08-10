@@ -356,6 +356,62 @@ async function testComfyuiConnection(baseURL) {
   };
 }
 
+/**
+ * 测试自定义视频生成 AI 连通性（设置页「测试连通性」按钮调用）
+ * 调用方舟兼容的 GET /models 接口，验证 Base URL 与 API Key 是否有效。
+ * 若提供了 modelId，额外检查该模型是否在返回列表中（提示是否已开通）。
+ *
+ * @param {string} baseURL - 方舟兼容端点，如 https://ark.cn-beijing.volces.com/api/v3
+ * @param {string} apiKey - 用户 API Key
+ * @param {string} [modelId] - 可选，待校验是否已开通的模型 ID
+ * @returns {Promise<{ ok, modelCount, modelMatched }>}
+ */
+async function testCustomConnection(baseURL, apiKey, modelId) {
+  const base = (baseURL || '').replace(/\/+$/, '');
+  if (!base) throw new Error('请先填写 Base URL');
+  if (!apiKey) throw new Error('请先填写 API Key');
+
+  let res;
+  try {
+    res = await fetch(`${base}/models`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+      },
+    });
+  } catch (netErr) {
+    // 网络层错误：域名不存在、无法连接、超时等
+    throw new Error(`无法连接到服务器，请检查 Base URL 是否正确（${netErr.message}）`);
+  }
+
+  const text = await res.text();
+  let data;
+  try { data = text ? JSON.parse(text) : {}; } catch {
+    // 非 JSON 响应通常意味着 Base URL 错误或网关拦截
+    throw new Error(`返回非 JSON 响应：${text.slice(0, 200)}（请检查 Base URL 是否正确）`);
+  }
+
+  if (!res.ok) {
+    const msg = data?.error?.message || data?.error || data?.message || `连接失败 (${res.status})`;
+    const err = new Error(msg);
+    err.status = res.status;
+    throw err;
+  }
+
+  // 方舟 /models 返回 { data: [{ id, ... }, ...] }
+  const models = Array.isArray(data?.data) ? data.data : (Array.isArray(data?.models) ? data.models : []);
+  const modelCount = models.length;
+  let modelMatched = null;
+  if (modelId) {
+    modelMatched = models.some((m) => m?.id === modelId);
+  }
+  return {
+    ok: true,
+    modelCount,
+    modelMatched,
+  };
+}
+
 // ============================================================
 // 通用：轮询、下载、读图
 // ============================================================
@@ -576,4 +632,5 @@ module.exports = {
   downloadVideo,
   readImageAsDataUrl,
   testComfyuiConnection,
+  testCustomConnection,
 };

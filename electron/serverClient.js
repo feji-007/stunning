@@ -136,6 +136,12 @@ const getVideoTask = (taskId) => request('GET', `/api/video/tasks/${taskId}`);
  */
 const getVideoHistory = () => request('GET', '/api/video/history');
 
+/**
+ * 拉取后台维护的内置 Seedance 模型列表
+ * @returns {object} { models: [{ id, name, desc }] }
+ */
+const getVideoModels = () => request('GET', '/api/video/models');
+
 // ==================== 充值（模拟支付）====================
 
 /**
@@ -180,6 +186,7 @@ module.exports = {
   createVideoTask,
   getVideoTask,
   getVideoHistory,
+  getVideoModels,
   // 充值
   getRechargePlans,
   createRechargeOrder,
