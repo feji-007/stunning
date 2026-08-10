@@ -1,80 +1,103 @@
 # 绝色 · Stunning
 
-> AI 视频生成桌面应用 + 独立后端服务 + 后台管理系统
+> AI 视频生成桌面应用 · 独立后端服务 · 后台管理系统
 
-基于 Electron + React 构建的跨平台 AI 视频生成桌面应用，支持**内置 Seedance 2.0**（消耗积分）与**自定义视频生成 AI**（自带 Key，方舟 API 兼容格式）两种模式。配套独立后端服务器提供用户认证、积分体系、充值订单管理；另含一个独立的后台管理系统，可视化管控用户、充值套餐、方舟 Key、积分规则等全部配置——数据库与方舟 Key 部署在服务器上，客户端只需账号密码登录（类似 QQ / 微信）。
+基于 Electron + React 构建的跨平台 AI 视频生成桌面应用。支持**内置模型**（1.0 系列免费、2.0 系列消耗积分）与**自定义模型**（用户自带 Key）双模式。配套独立后端服务器（支持 SQLite/MySQL 切换）与可视化后台管理系统——数据库与方舟 Key 部署在服务器上，客户端只需账号密码登录（类似 QQ / 微信）。
 
-## ✨ 核心功能
+---
+
+## 目录
+
+- [核心功能](#核心功能)
+- [技术架构](#技术架构)
+- [项目结构](#项目结构)
+- [快速开始](#快速开始)
+- [配置说明](#配置说明)
+- [后端 API](#后端-api)
+- [数据库](#数据库)
+- [服务器部署](#服务器部署)
+- [技术栈](#技术栈)
+
+---
+
+## 核心功能
 
 ### 🎬 AI 视频生成（双模式）
 
 | 模式 | 实现方式 | Key 归属 | 积分 |
 |------|----------|----------|------|
-| **内置 Seedance 2.0** | 服务器调用火山方舟 API（Seedance 2.0 Pro/Fast） | 服务器持有 | 消耗积分（失败自动退还） |
-| **自定义视频生成 AI** | 客户端直接调用用户配置的方舟兼容端点 | 用户自带 | 不消耗积分 |
+| **内置模型 1.0** | 服务器调用火山方舟 API（Pro/Lite × 文生/图生） | 服务器统一调用（免 Key） | **免费，不消耗积分** |
+| **内置模型 2.0** | 服务器调用火山方舟 API（Pro/Fast） | 服务器持有 | 消耗积分（失败自动退还） |
+| **自定义模型** | 客户端直连用户配置的方舟兼容端点 | 用户自带 | 不消耗积分 |
 
-- **文生视频 / 图生视频**：输入提示词或上传参考图生成短视频
+- **文生视频 / 图生视频**：提示词或参考图生成短视频
 - **参数可调**：时长（5s/10s）、分辨率（720p/1080p）、画面比例、水印、随机种子、模型选择
-- **进度可视化**：任务创建 → 轮询 → 下载全流程进度展示
-- **历史记录**：所有已生成视频自动归档，可预览与打开目录
-- **取消生成**：随时中止进行中的任务
+- **全流程可视化**：任务创建 → 轮询 → 下载，进度实时展示
+- **历史归档**：已生成视频自动保存，可预览与打开目录
+- **随时取消**：中止进行中的任务
 
 ### 💰 积分与充值
+
 - **注册赠送**：新用户注册即送 100 积分
-- **积分扣减**：内置 Seedance 视频生成按公式消耗积分（`时长 × 2 × (1080p ? 2 : 1)`）
-- **失败退还**：生成失败自动退还预扣积分
-- **在线充值**：用户菜单点击积分即可充值，支持多档套餐（含赠送积分）
-- **模拟支付**：当前为模拟支付，点击即到账；可平滑替换为真实支付回调
+- **按量扣减**：`时长 × 2 × (1080p ? 2 : 1)` 积分（仅 Seedance 2.0 系列；**1.0 系列免费，不消耗积分**）
+- **失败退还**：生成失败自动退还预扣积分（2.0 系列）
+- **在线充值**：多档套餐（含赠送积分），模拟支付即时到账，可平滑替换为真实支付回调
 
 ### 🔐 用户系统
-- **账号体系**：注册 / 登录，密码 bcrypt 加盐哈希，JWT 鉴权
-- **免感知后端**：数据库与方舟 Key 全部留在服务器，客户端只输入账号密码
-- **登录态持久化**：Token 本地保存，下次启动自动恢复
-- **用户中心**：头像上传、昵称编辑、积分查看、一键退出
+
+- 注册 / 登录，密码 bcrypt 加盐哈希，JWT 鉴权
+- 数据库与方舟 Key 全部留在服务器，客户端只输入账号密码
+- Token 本地持久化，下次启动自动恢复登录
+- 用户中心：头像上传、昵称编辑、积分查看、一键退出
 
 ### 🛠️ 后台管理系统
-独立的 Web 后台（React + Ant Design），管理员独立账号体系，可视化管控一切：
-- **仪表盘**：用户数、视频任务、充值金额、状态分布等概览统计
-- **用户管理**：搜索 / 分页 / 调整积分 / 编辑资料 / 删除用户
-- **充值套餐**：套餐增删改（ID / 标签 / 价格 / 积分 / 赠送），实时统计
+
+独立 Web 后台（React + Ant Design），管理员独立账号体系：
+
+- **仪表盘**：用户数、视频任务、充值金额、状态分布概览
+- **用户管理**：搜索 / 分页 / 调整积分 / 编辑资料 / 删除
+- **充值套餐**：增删改（ID / 标签 / 价格 / 积分 / 赠送），实时统计
 - **订单记录**：充值订单查询、状态筛选、分页
-- **视频任务**：任务统计、搜索、状态筛选、任务详情（含参数 / error / 视频地址）
+- **视频任务**：任务统计、搜索、状态筛选、详情查看
 - **系统配置**（核心）：方舟 API Key / BaseURL / 默认模型、积分规则、充值套餐、内置模型列表——**全部入数据库，修改后实时生效无需重启**
 
-## 🏗️ 技术架构
+---
+
+## 技术架构
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│              后端服务器（独立部署，server/）                     │
-│   Express + SQLite/MySQL（可切换）+ JWT                       │
-│   ┌─────────┐ ┌─────────┐ ┌──────────┐ ┌─────────────────┐  │
-│   │ auth 路由│ │user 路由│ │video 路由│ │ recharge 路由   │  │
-│   │注册/登录│ │资料/积分│ │Seedance │ │ 套餐/订单/支付  │  │
-│   └────┬────┘ └────┬────┘ └────┬─────┘ └────────┬────────┘  │
-│        └───────────┴───────────┴────────────────┘            │
-│   ┌──────────────────────────────────────────────────────┐   │
-│   │  /api/admin/*  管理后台 API（adminAuth 独立鉴权）     │   │
-│   │  auth / users / recharge / settings / video          │   │
-│   └──────────────────────────────────────────────────────┘   │
-│   ┌────────────────────┐  ┌──────────────────────────────┐   │
-│   │ settings.js        │  │ services/arkService.js       │   │
-│   │ (DB 配置缓存/读写) │  │ → 火山方舟 API (ARK_API_KEY) │   │
-│   └────────────────────┘  └──────────────────────────────┘   │
-│   ┌──────────────────────────────────────────────────────┐   │
-│   │  SQLite / MySQL（users / video_tasks / recharge_orders /）│   │
-│   │         admins / settings）                          │   │
-│   └──────────────────────────────────────────────────────┘   │
-└─────────┬───────────────────────────────┬─────────────────────┘
+┌────────────────────────────────────────────────────────────────┐
+│              后端服务器（独立部署，server/）                       │
+│   Express + SQLite/MySQL（可切换）+ JWT                         │
+│                                                                │
+│   ┌─────────┐ ┌─────────┐ ┌──────────┐ ┌─────────────────┐    │
+│   │ auth 路由│ │user 路由│ │video 路由│ │ recharge 路由   │    │
+│   │注册/登录│ │资料/积分│ │Seedance │ │ 套餐/订单/支付  │    │
+│   └────┬────┘ └────┬────┘ └────┬─────┘ └────────┬────────┘    │
+│        └───────────┴───────────┴────────────────┘              │
+│   ┌──────────────────────────────────────────────────────────┐ │
+│   │  /api/admin/*  管理后台 API（adminAuth 独立鉴权）         │ │
+│   │  auth / users / recharge / settings / video              │ │
+│   └──────────────────────────────────────────────────────────┘ │
+│   ┌────────────────────┐  ┌──────────────────────────────────┐ │
+│   │ settings.js        │  │ services/arkService.js           │ │
+│   │ (DB 配置缓存/读写) │  │ → 火山方舟 API (ARK_API_KEY)     │ │
+│   └────────────────────┘  └──────────────────────────────────┘ │
+│   ┌──────────────────────────────────────────────────────────┐ │
+│   │  SQLite / MySQL（users / video_tasks / recharge_orders / │ │
+│   │                  admins / settings）                     │ │
+│   └──────────────────────────────────────────────────────────┘ │
+└─────────┬───────────────────────────────┬──────────────────────┘
           │ HTTP / JSON                   │ HTTP / JSON (admin token)
-┌─────────┼──────────────┐  ┌────────────┼─────────────────────┐
-│         ▼              │  │            ▼                      │
-│  Electron 桌面客户端    │  │  后台管理 Web (admin/)            │
-│  (src/ + electron/)    │  │  React + Ant Design              │
-│  ┌──────────────────┐  │  │  ┌────────────────────────────┐  │
-│  │ 主进程 electron/ │  │  │  │ 仪表盘 / 用户 / 套餐 /     │  │
-│  │ ├ videoService   │  │  │  │ 订单 / 视频任务 / 系统配置 │  │
-│  │ ├ serverClient   │  │  │  └────────────────────────────┘  │
-│  │ └ configStore    │  │  └──────────────────────────────────┘
+┌─────────┼──────────────┐  ┌────────────┼──────────────────────┐
+│         ▼              │  │            ▼                       │
+│  Electron 桌面客户端    │  │  后台管理 Web (admin/)             │
+│  (src/ + electron/)    │  │  React + Ant Design               │
+│  ┌──────────────────┐  │  │  ┌────────────────────────────┐   │
+│  │ 主进程 electron/ │  │  │  │ 仪表盘 / 用户 / 套餐 /     │   │
+│  │ ├ videoService   │  │  │  │ 订单 / 视频任务 / 系统配置 │   │
+│  │ ├ serverClient   │  │  │  └────────────────────────────┘   │
+│  │ └ configStore    │  │  └───────────────────────────────────┘
 │  └────────┬─────────┘  │
 │           │ IPC        │
 │  ┌────────▼─────────┐  │
@@ -86,17 +109,19 @@
 └────────────────────────┘
 ```
 
-## 📁 项目结构
+---
+
+## 项目结构
 
 ```
 stunning/
 ├── electron/                  # Electron 主进程（桌面客户端）
 │   ├── main.js                # 主入口，窗口管理 + 生命周期
 │   ├── preload.js             # 预加载脚本，contextBridge 暴露 window.api
-│   ├── ipc-handlers.js        # IPC 通道处理器（路由到各服务）
+│   ├── ipc-handlers.js        # IPC 通道处理器
 │   ├── configStore.js         # 配置持久化（~/.stunning/config.json）
 │   ├── serverClient.js        # 后端 HTTP 客户端（token 注入）
-│   └── videoService.js        # 视频生成服务（内置 Seedance + 自定义 AI）
+│   └── videoService.js        # 视频生成服务（内置模型 + 自定义模型）
 ├── server/                    # 后端服务器（独立部署）
 │   ├── index.js               # Express 入口
 │   ├── config.js              # 静态配置（端口、DB、JWT、方舟默认值）
@@ -111,7 +136,7 @@ stunning/
 │   ├── routes/
 │   │   ├── auth.js            # 注册 / 登录
 │   │   ├── user.js            # 资料 / 头像 / 积分
-│   │   ├── video.js           # 内置 Seedance 视频（积分扣减/退还）
+│   │   ├── video.js           # 内置模型视频（积分扣减/退还）
 │   │   ├── recharge.js        # 充值套餐 / 订单 / 模拟支付
 │   │   └── admin/             # 管理后台 API
 │   │       ├── index.js       # 聚合入口
@@ -133,7 +158,7 @@ stunning/
 │   │       ├── Recharge.jsx   # 充值套餐管理
 │   │       ├── Orders.jsx     # 订单记录
 │   │       ├── VideoTasks.jsx # 视频任务管理
-│   │       └── Settings.jsx   # 系统配置（方舟Key/积分规则/套餐/模型）
+│   │       └── Settings.jsx   # 系统配置
 │   ├── vite.config.js         # Vite 配置（代理 /api 到后端）
 │   └── package.json
 ├── src/                       # 桌面客户端渲染进程（React）
@@ -144,7 +169,7 @@ stunning/
 │   │   ├── UserMenu.jsx       # 用户菜单（头像/积分/充值/退出）
 │   │   ├── VideoStudio.jsx    # 视频工作室（生成主界面）
 │   │   ├── RechargeModal.jsx  # 充值弹窗
-│   │   └── SettingsPanel.jsx  # 设置（提供商切换/自定义AI/输出目录）
+│   │   └── SettingsPanel.jsx  # 设置（提供商切换/自定义模型/输出目录）
 │   ├── ipc/bridge.js          # IPC 桥接层（带 mock 回退）
 │   ├── store/useStore.js      # Zustand 全局状态
 │   └── styles/global.css      # 全局样式
@@ -155,11 +180,13 @@ stunning/
 └── .gitignore
 ```
 
-## 🚀 快速开始
+---
+
+## 快速开始
 
 ### 环境要求
 
-- **Node.js** >= 22.5（后端使用内置 `node:sqlite`，需 22.5+；推荐 24.x）
+- **Node.js** >= 22.5（后端使用内置 `node:sqlite`；推荐 24.x）
 - **npm** >= 9.x
 - **操作系统**：Windows / macOS / Linux
 
@@ -169,14 +196,10 @@ stunning/
 git clone https://github.com/feji-007/stunning.git
 cd stunning
 
-# 1. 桌面客户端依赖
-npm install
-
-# 2. 后端服务器依赖
-cd server && npm install && cd ..
-
-# 3. 后台管理系统依赖
-cd admin && npm install && cd ..
+# 分别安装三端依赖
+npm install                        # 1. 桌面客户端
+cd server && npm install && cd ..  # 2. 后端服务器
+cd admin && npm install && cd ..   # 3. 后台管理系统
 ```
 
 > `.npmrc` 已配置 npmmirror 镜像源（含 electron / electron-builder 二进制镜像）。
@@ -188,7 +211,7 @@ cd admin && npm install && cd ..
 ```bash
 # 终端 1：后端服务器（监听 http://localhost:3001）
 cd server
-$env:ARK_API_KEY="你的方舟API Key"      # Windows PowerShell（内置 Seedance 必需）
+$env:ARK_API_KEY="你的方舟API Key"      # Windows PowerShell（内置模型必需）
 # export ARK_API_KEY="你的方舟API Key"   # macOS/Linux
 npm start            # node --experimental-sqlite index.js
 
@@ -215,7 +238,9 @@ npm run dist         # electron-builder 打包为安装包
 cd admin && npm run build   # 构建到 admin/dist/
 ```
 
-## ⚙️ 配置说明
+---
+
+## 配置说明
 
 ### 1. 用户账号（客户端）
 
@@ -226,19 +251,22 @@ cd admin && npm run build   # 构建到 admin/dist/
 
 ### 2. 视频生成（两种模式）
 
-**内置 Seedance 模式（默认）**：消耗积分，无需用户配置 Key
-- 积分规则：5s/720p = 10 积分，5s/1080p = 20 积分，10s 翻倍
-- 在后台「系统配置 → 方舟 API」填入 `ARK_API_KEY` 后即可使用
-- 生成失败自动退还积分
+**内置模型模式（默认）**：无需用户配置 Key，由服务器统一调用
+- **Seedance 1.0 系列（免费）**：Pro / Lite × 文生视频(t2v) / 图生视频(i2v)，不消耗积分
+- **Seedance 2.0 系列（消耗积分）**：Pro / Fast，积分规则 5s/720p = 10 积分，5s/1080p = 20 积分，10s 翻倍
+- 在后台「系统配置 → 方舟 API」填入 `ARK_API_KEY` 后即可使用（1.0 免费模型也无需用户端 Key）
+- 2.0 系列生成失败自动退还积分
 
-**自定义 AI 模式**：不消耗积分，用户自带 Key
+**自定义模型模式**：不消耗积分，用户自带 Key
 1. 前往 [火山引擎方舟](https://console.volcengine.com/ark) 创建 API Key 并开通视频生成模型
-2. 客户端「设置」切换为「自定义 AI」，填入 Base URL / API Key / 模型 ID
+2. 客户端「设置」切换为「自定义模型」，填入 Base URL / API Key / 模型 ID
 3. 返回「视频工作室」生成视频（不消耗积分）
 
 **可选模型 ID**：
-- `doubao-seedance-2-0-pro` — 高质量视频生成
-- `doubao-seedance-2-0-fast` — 快速生成
+- `seedance-1-0-pro-t2v` / `seedance-1-0-lite-t2v` — 1.0 文生视频（免费）
+- `seedance-1-0-pro-i2v` / `seedance-1-0-lite-i2v` — 1.0 图生视频（免费）
+- `doubao-seedance-2-0-pro` — 2.0 高质量视频生成（消耗积分）
+- `doubao-seedance-2-0-fast` — 2.0 快速生成（消耗积分）
 
 ### 3. 积分充值
 
@@ -269,7 +297,9 @@ cd admin && npm run build   # 构建到 admin/dist/
 
 > 后台修改的所有配置存入数据库，**实时生效**，无需重启服务器。
 
-## 🔌 后端 API 一览
+---
+
+## 后端 API
 
 后端默认监听 `http://localhost:3001`，所有接口 JSON，鉴权接口需 `Authorization: Bearer <token>`。
 
@@ -288,8 +318,8 @@ cd admin && npm run build   # 构建到 admin/dist/
 | POST | `/api/recharge/orders` | 创建充值订单 | 用户 |
 | POST | `/api/recharge/orders/:id/pay` | 模拟支付（到账积分） | 用户 |
 | GET  | `/api/recharge/history` | 充值历史 | 用户 |
-| POST | `/api/video/generate` | 创建视频任务（预扣积分） | 用户 |
-| GET  | `/api/video/tasks/:taskId` | 查询任务（失败自动退还） | 用户 |
+| POST | `/api/video/generate` | 创建视频任务（1.0 免费不扣积分；2.0 预扣积分） | 用户 |
+| GET  | `/api/video/tasks/:taskId` | 查询任务（2.0 失败自动退还） | 用户 |
 | GET  | `/api/video/history` | 视频任务历史 | 用户 |
 
 ### 管理后台 API（`/api/admin/*`，需管理员 token）
@@ -312,7 +342,9 @@ cd admin && npm run build   # 构建到 admin/dist/
 | GET  | `/api/admin/video/tasks` | 视频任务列表 |
 | GET  | `/api/admin/video/stats` | 任务统计 |
 
-## 🗄️ 数据库
+---
+
+## 数据库
 
 支持 **SQLite** 和 **MySQL** 两种数据库，通过环境变量 `DB_DRIVER` 一键切换，业务代码完全相同。
 
@@ -337,15 +369,13 @@ cd admin && npm run build   # 构建到 admin/dist/
 ### 使用 SQLite（默认，零配置）
 
 ```bash
-# 无需任何数据库配置，直接启动
-cd server
-npm start
+cd server && npm start
 # 数据库文件自动创建在 server/data/stunning.db
 ```
 
 可自定义文件目录：
 ```bash
-export STUNNING_DATA_DIR="/var/lib/stunning"   # 数据库存放目录
+export STUNNING_DATA_DIR="/var/lib/stunning"
 ```
 
 ### 切换到 MySQL
@@ -363,43 +393,26 @@ FLUSH PRIVILEGES;
 
 ```bash
 export DB_DRIVER=mysql              # 切换驱动
-export DB_HOST=127.0.0.1            # MySQL 地址
-export DB_PORT=3306                 # MySQL 端口
-export DB_USER=stunning             # 用户名
-export DB_PASSWORD=your-password    # 密码
-export DB_NAME=stunning             # 数据库名
+export DB_HOST=127.0.0.1
+export DB_PORT=3306
+export DB_USER=stunning
+export DB_PASSWORD=your-password
+export DB_NAME=stunning
 export DB_POOL_SIZE=10              # 连接池大小（可选，默认 10）
 ```
 
 **3. 启动服务器**
 
 ```bash
-cd server
-npm start
-# 首次启动自动建表 + 种子数据（管理员 admin/admin123 + 默认系统配置）
+cd server && npm start
+# 首次启动自动建表 + 种子数据
 ```
 
-启动后日志会显示：
+启动日志会显示当前驱动：
 ```
 [stunning-server] 数据库驱动: mysql
 [stunning-server] 数据库: mysql://stunning@127.0.0.1:3306/stunning
 [db] 数据库就绪（驱动: mysql）
-```
-
-### 从 SQLite 迁移到 MySQL
-
-1. 在 MySQL 中创建数据库（见上方）
-2. 设置 `DB_DRIVER=mysql` 及连接环境变量
-3. 启动服务器（自动建表 + 种子）
-4. 如需迁移已有数据，用 `sqlite3` 导出再导入 MySQL：
-
-```bash
-# 导出 SQLite 数据
-sqlite3 server/data/stunning.db .dump --data-only > data.sql
-
-# 简单处理方言差异后导入 MySQL
-# （需将 AUTOINCREMENT → AUTO_INCREMENT 等，或用工具如 sqlite3-to-mysql）
-mysql -u stunning -p stunning < data.sql
 ```
 
 ### 数据访问层架构
@@ -414,11 +427,13 @@ routes / settings.js
        └── db/mysqlAdapter.js    ← mysql2/promise 连接池
 ```
 
-两种 adapter 暴露完全相同的接口，业务代码（routes）不关心底层数据库类型。新增数据库支持只需实现一个新 adapter 并在 `db.js` 工厂中注册。
+两种 adapter 暴露完全相同的接口，业务代码不关心底层数据库类型。新增数据库支持只需实现一个新 adapter 并在 `db.js` 工厂中注册。
 
-数据库与方舟 Key 全部留在服务器端，客户端**完全不感知**。迁移服务器只需改配置 + 客户端登录界面填新地址。
+数据库与方舟 Key 全部留在服务器端，客户端**完全不感知**。
 
-## 🛠️ 服务器部署
+---
+
+## 服务器部署
 
 ```bash
 cd server
@@ -430,7 +445,7 @@ export JWT_SECRET="your-strong-secret"
 
 # 数据库配置（二选一）
 # —— 方式 A：SQLite（默认，零配置）——
-export STUNNING_DATA_DIR="/var/lib/stunning"   # 数据库存放目录
+export STUNNING_DATA_DIR="/var/lib/stunning"
 
 # —— 方式 B：MySQL ——
 # export DB_DRIVER=mysql
@@ -440,9 +455,9 @@ export STUNNING_DATA_DIR="/var/lib/stunning"   # 数据库存放目录
 # export DB_PASSWORD=your-password
 # export DB_NAME=stunning
 
-# 方舟 Key 也可通过环境变量预设（之后可在后台管理修改）
+# 方舟 Key（之后也可在后台管理修改）
 export ARK_API_KEY="your-ark-key"
-export ARK_MODEL="doubao-seedance-2-0-pro"
+export ARK_MODEL="seedance-1-0-lite-t2v"
 
 node --experimental-sqlite index.js
 ```
@@ -455,7 +470,19 @@ location /api/ {
 }
 ```
 
-## 🔧 技术栈
+### 配置文件位置
+
+| 配置项 | 路径 |
+|--------|------|
+| 客户端配置（视频参数 / 自定义模型 Key / 服务器地址 / Token） | `~/.stunning/config.json` |
+| 后端数据库（SQLite 模式） | `server/data/stunning.db` |
+| 视频下载目录 | `~/Videos/stunning/` |
+| 后台管理 Token | 浏览器 localStorage(`stunning_admin_token`) |
+| 打包产物 | `release/` |
+
+---
+
+## 技术栈
 
 | 类别 | 技术 |
 |------|------|
@@ -465,20 +492,12 @@ location /api/ {
 | 后端服务 | Express 4 |
 | 数据库 | SQLite (Node 内置 `node:sqlite`) / MySQL (mysql2) 可切换 |
 | 认证 | JWT (jsonwebtoken) + bcryptjs（用户与管理员双体系） |
-| 视频生成 | 火山引擎方舟 API（Seedance 2.0） |
+| 视频生成 | 火山引擎方舟 API（Seedance 1.0 免费 / 2.0 付费） |
 | UI 图标 | Lucide React（客户端） / @ant-design/icons（后台） |
 | 打包工具 | electron-builder |
 
-## 📝 配置文件位置
+---
 
-| 配置项 | 路径 |
-|--------|------|
-| 客户端配置（视频参数 / 自定义 AI Key / 服务器地址 / Token） | `~/.stunning/config.json` |
-| 后端数据库 | `server/data/stunning.db` |
-| 视频下载目录 | `~/Videos/stunning/` |
-| 后台管理 Token | 浏览器 localStorage(`stunning_admin_token`) |
-| 打包产物 | `release/` |
-
-## 📄 License
+## License
 
 本项目基于 [MIT License](LICENSE) 开源。

@@ -7,8 +7,8 @@ import { bridge } from '../ipc/bridge';
  *
  * 仅保留视频生成相关状态：
  * - 认证 / 用户 / 积分
- * - 应用配置（视频参数 / 提供商选择 / 自定义 AI 配置）
- * - 视频生成（内置 Seedance + 自定义 AI）
+ * - 应用配置（视频参数 / 提供商选择 / 自定义模型配置）
+ * - 视频生成（内置模型 + 自定义模型）
  * - UI 状态（当前激活视图）
  */
 
@@ -230,7 +230,7 @@ export const useStore = create((set, get) => ({
   videoGenStatus: 'idle',    // 'idle' | 'queued' | 'running' | 'downloading' | 'error'
   videoGenError: null,
   videoProgress: { stage: null, status: null },
-  seedanceModels: [],        // 后台维护的内置 Seedance 模型列表 [{ id, name, desc }]
+  seedanceModels: [],        // 后台维护的内置模型列表 [{ id, name, desc }]
 
   // 选择参考图（图生视频）
   selectReferenceImage: async () => {
@@ -238,7 +238,7 @@ export const useStore = create((set, get) => ({
     return result; // { path, dataUrl } 或 null
   },
 
-  // 拉取后台维护的内置 Seedance 模型列表
+  // 拉取后台维护的内置模型列表
   loadSeedanceModels: async () => {
     try {
       const data = await bridge.video.getModels();
@@ -281,7 +281,7 @@ export const useStore = create((set, get) => ({
       offError();
       if (!result.success) {
         set({ videoGenStatus: 'error', videoGenError: result.error });
-        // 内置模式失败可能已退还积分，仍刷新一次（自定义 / ComfyUI 不消耗积分，无需刷新）
+        // 内置模式失败可能已退还积分，仍刷新一次（自定义模型不消耗积分，无需刷新）
         if (genParams.provider === 'seedance') await get().refreshPoints();
         return null;
       }
@@ -302,7 +302,7 @@ export const useStore = create((set, get) => ({
         videoProgress: { stage: null, status: null },
         videoHistory: [record, ...state.videoHistory].slice(0, 50),
       }));
-      // 内置模式消耗积分，刷新余额；自定义 / ComfyUI 不消耗积分
+      // 内置模式消耗积分，刷新余额；自定义模型不消耗积分
       if (record.provider === 'seedance') await get().refreshPoints();
       return record;
     } catch (err) {

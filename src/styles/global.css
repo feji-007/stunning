@@ -1226,6 +1226,10 @@ body {
   width: 70px;
   flex-shrink: 0;
 }
+/* 下拉框在 param-row 中自适应剩余宽度 */
+.param-row .video-model-select {
+  flex: 1;
+}
 .param-options {
   display: flex;
   gap: 6px;
@@ -1319,6 +1323,30 @@ body {
   font-size: 11px;
   color: var(--text-muted);
   line-height: 1.5;
+}
+/* 内置模型下拉框 */
+.video-model-select {
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px;
+}
+.video-model-select:focus { border-color: var(--accent); }
+.video-model-select:disabled { opacity: 0.5; cursor: not-allowed; }
+.video-model-select option {
+  background: var(--bg-input);
+  color: var(--text-primary);
 }
 .video-advanced-hint--inline {
   margin-left: 0;
@@ -1598,30 +1626,14 @@ body {
 }
 .video-apikey-input:focus { border-color: var(--accent); }
 
-/* ComfyUI 本地部署配置 */
+/* 行内按钮组 / 预设标签布局 */
 .comfyui-url-row {
   display: flex;
   gap: 8px;
   align-items: center;
 }
 .comfyui-url-row .video-apikey-input { flex: 1; }
-.comfyui-workflow-input {
-  width: 100%;
-  background: var(--bg-input);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 10px 12px;
-  color: var(--text-primary);
-  font-size: 12px;
-  font-family: var(--font-mono);
-  line-height: 1.5;
-  resize: vertical;
-  outline: none;
-  min-height: 180px;
-  white-space: pre;
-  overflow: auto;
-}
-.comfyui-workflow-input:focus { border-color: var(--accent); }
+/* 连通性测试提示 */
 .comfyui-test-ok {
   display: flex;
   align-items: center;

@@ -1,7 +1,7 @@
 {
   "name": "stunning",
   "version": "2.0.0",
-  "description": "绝色（Stunning）— AI 视频生成桌面应用，基于 Electron + React（内置 Seedance 2.0 + 自定义视频生成 AI）",
+  "description": "绝色（Stunning）— AI 视频生成桌面应用，基于 Electron + React（内置模型 2.0 + 自定义模型）",
   "main": "electron/main.js",
   "author": "",
   "license": "MIT",

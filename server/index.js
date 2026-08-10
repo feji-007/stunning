@@ -4,7 +4,7 @@
  * 提供：
  *   - 用户认证（注册 / 登录，JWT）
  *   - 用户资料 / 头像 / 积分
- *   - 内置 Seedance 视频生成（服务器持有方舟 Key，消耗用户积分）
+ *   - 内置模型视频生成（服务器持有方舟 Key，消耗用户积分）
  *   - 数据库（支持 SQLite / MySQL 切换，部署在服务器上，客户端无感）
  *
  * 启动：  cd server && npm install && npm start
@@ -54,9 +54,9 @@ async function main() {
     console.log(`[stunning-server] 已启动: http://localhost:${config.port}`);
     console.log(`[stunning-server] 数据库驱动: ${driver}`);
     console.log(`[stunning-server] 数据库: ${dbInfo}`);
-    console.log(`[stunning-server] 内置 Seedance: ${config.ark.baseURL} (模型 ${config.ark.defaultModel})`);
+    console.log(`[stunning-server] 内置模型: ${config.ark.baseURL} (模型 ${config.ark.defaultModel})`);
     if (!config.ark.apiKey) {
-      console.warn('[stunning-server] ⚠️  未配置 ARK_API_KEY，内置 Seedance 视频生成将不可用');
+      console.warn('[stunning-server] ⚠️  未配置 ARK_API_KEY，内置模型视频生成将不可用');
     }
   });
 }

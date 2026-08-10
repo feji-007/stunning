@@ -1,11 +1,11 @@
 /**
  * 服务器配置
  *
- * 数据库连接信息、JWT 密钥、内置 Seedance 视频生成的方舟 API 凭证
+ * 数据库连接信息、JWT 密钥、内置模型视频生成的方舟 API 凭证
  * 全部留在此处 —— 客户端无需、也无法感知这些信息。
  *
  * 客户端只通过账号密码登录，拿到 JWT 后访问业务接口；
- * 内置 Seedance 视频生成由服务器调用方舟 API，并按规则扣减用户积分。
+ * 内置模型视频生成由服务器调用方舟 API（1.0 免费不扣积分，2.0 按规则扣减积分）。
  */
 const path = require('path');
 const fs = require('fs');
@@ -48,17 +48,18 @@ module.exports = {
   // 默认新用户积分
   defaultPoints: 100,
 
-  // 内置 Seedance 视频生成 —— 火山引擎方舟 API 凭证
-  // 由服务器持有，客户端无需自己的 key 即可使用内置 Seedance 2.0
-  // 用户积分作为消耗凭证：每次生成按规则扣减积分
+  // 内置模型视频生成 —— 火山引擎方舟 API 凭证
+  // 由服务器统一调用，客户端无需自己的 Key。
+  // - Seedance 1.0 系列（seedance-1-0-*）：免费，不消耗积分
+  // - Seedance 2.0 系列（doubao-seedance-2-0-*）：消耗积分，需配置 ARK_API_KEY
   ark: {
     baseURL: process.env.ARK_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3',
     apiKey: process.env.ARK_API_KEY || '',
-    // 内置默认模型（Seedance 2.0 Pro）
-    defaultModel: process.env.ARK_MODEL || 'doubao-seedance-2-0-pro',
+    // 内置默认模型（Seedance 1.0 Lite 文生视频，免费）
+    defaultModel: process.env.ARK_MODEL || 'seedance-1-0-lite-t2v',
   },
 
-  // 视频生成积分扣减规则
+  // 视频生成积分扣减规则（仅 Seedance 2.0 系列生效，1.0 免费模型不扣积分）
   // 计算公式：duration(秒) × basePerSecond × (resolution==='1080p' ? hdMultiplier : 1)
   videoPoints: {
     basePerSecond: 2,   // 每秒基础消耗 2 积分

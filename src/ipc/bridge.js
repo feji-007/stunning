@@ -74,7 +74,6 @@ const mockVideoApi = {
   getModels: async () => ({ models: [] }),
   generate: async () => ({ success: false, error: '非 Electron 环境，无法调用视频生成' }),
   cancel: async () => {},
-  testComfyui: async () => { throw new Error('非 Electron 环境'); },
   testCustom: async () => { throw new Error('非 Electron 环境'); },
   onProgress: () => noop,
   onSuccess: () => noop,
@@ -135,7 +134,7 @@ export const bridge = {
     getHistory: () => wrap(resolve('recharge', 'getHistory')(), 'recharge.getHistory'),
   },
 
-  // ===== 视频生成（内置 Seedance + 自定义 AI）=====
+  // ===== 视频生成（内置模型 + 自定义模型）=====
   video: {
     selectImage: () => wrap(resolve('video', 'selectImage')(), 'video.selectImage'),
     selectOutputDir: () => wrap(resolve('video', 'selectOutputDir')(), 'video.selectOutputDir'),
@@ -146,7 +145,6 @@ export const bridge = {
 
     generate: (params) => wrap(resolve('video', 'generate')(params), 'video.generate'),
     cancel: () => wrap(resolve('video', 'cancel')(), 'video.cancel'),
-    testComfyui: (baseURL) => wrap(resolve('video', 'testComfyui')(baseURL), 'video.testComfyui'),
     testCustom: (baseURL, apiKey, modelId) => wrap(resolve('video', 'testCustom')(baseURL, apiKey, modelId), 'video.testCustom'),
 
     onProgress: (cb) => resolve('video', 'onProgress')(cb),

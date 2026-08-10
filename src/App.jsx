@@ -56,7 +56,7 @@ export default function App() {
 
   // 顶栏左侧：当前视频生成提供商
   const provider = appConfig?.videoProvider || 'seedance';
-  const providerLabel = provider === 'custom' ? '自定义 AI' : '内置 Seedance';
+  const providerLabel = provider === 'custom' ? '自定义模型' : '内置模型';
 
   return (
     <div className="app">

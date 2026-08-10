@@ -1,7 +1,7 @@
 {
   "name": "stunning-server",
   "version": "2.1.0",
-  "description": "绝色（Stunning）后端服务器 — 用户认证 / 积分 / 内置 Seedance 视频生成（支持 SQLite / MySQL 切换）",
+  "description": "绝色（Stunning）后端服务器 — 用户认证 / 积分 / 内置模型视频生成（支持 SQLite / MySQL 切换）",
   "main": "index.js",
   "type": "commonjs",
   "scripts": {

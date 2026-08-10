@@ -5,10 +5,10 @@
  * 渲染进程只能通过 window.api 调用，无法直接访问 Node API。
  *
  * 暴露的能力分组：
- *   - config        应用配置（视频参数 / 自定义 AI / 服务器地址 / 登录态）
+ *   - config        应用配置（视频参数 / 自定义模型 / 服务器地址 / 登录态）
  *   - server        后端服务器（认证 / 用户 / 积分）
  *   - recharge      充值（套餐 / 创建订单 / 模拟支付 / 历史）
- *   - video         视频生成（内置 Seedance + 自定义 AI）
+ *   - video         视频生成（内置模型 + 自定义模型）
  *
  * 视频生成为异步流式：start 触发 → onProgress/onSuccess/onError 事件回调 → cancel 中止。
  * 每个事件订阅返回一个取消监听函数。
@@ -63,18 +63,16 @@ contextBridge.exposeInMainWorld('api', {
     getOutputDir: () => ipcRenderer.invoke('video:output-dir'),
     // 在系统资源管理器中打开目录
     openFolder: (folderPath) => ipcRenderer.invoke('video:open-folder', folderPath),
-    // 历史任务（仅内置 Seedance 模式记录在服务器）
+    // 历史任务（仅内置模型模式记录在服务器）
     getHistory: () => ipcRenderer.invoke('video:history'),
-    // 拉取后台维护的内置 Seedance 模型列表
+    // 拉取后台维护的内置模型列表
     getModels: () => ipcRenderer.invoke('video:get-models'),
 
     // 生成视频（流式）
     // params: { provider, prompt, imageUrl, duration, resolution, ratio, watermark, seed, model }
     generate: (params) => ipcRenderer.invoke('video:generate', params),
     cancel: () => ipcRenderer.invoke('video:cancel'),
-    // 测试 ComfyUI 连通性
-    testComfyui: (baseURL) => ipcRenderer.invoke('video:test-comfyui', baseURL),
-    // 测试自定义视频生成 AI 连通性（baseURL, apiKey, modelId?）
+    // 测试自定义模型连通性（baseURL, apiKey, modelId?）
     testCustom: (baseURL, apiKey, modelId) => ipcRenderer.invoke('video:test-custom', baseURL, apiKey, modelId),
 
     // 事件订阅，均返回取消监听函数

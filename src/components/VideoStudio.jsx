@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useStore } from '../store/useStore';
 import {
   Film, Play, Square, Image as ImageIcon, Sparkles,
-  Loader2, FolderOpen, Clock, AlertCircle, CheckCircle2, Wand2, Coins, Cpu,
+  Loader2, FolderOpen, Clock, AlertCircle, CheckCircle2, Wand2, Coins,
 } from 'lucide-react';
 
 const DURATIONS = [5, 10];
@@ -15,25 +15,21 @@ const RATIOS = [
   { value: '3:4', label: '竖屏 3:4' },
   { value: '21:9', label: '宽屏 21:9' },
 ];
-// 内置 Seedance 默认模型列表（与服务端默认一致，作为服务器不可达时的兜底）
-// 同时覆盖 1.0 / 2.0 系列；1.0 区分 t2v / i2v
+// 内置模型默认模型列表（与服务端默认一致，作为服务器不可达时的兜底）
+// 覆盖 1.0 / 2.0 系列；1.0 区分 t2v / i2v
 const DEFAULT_SEEDANCE_MODELS = [
-  { id: 'doubao-seedance-2-0-pro', name: 'Seedance 2.0 Pro', desc: '更高质量' },
-  { id: 'doubao-seedance-2-0-fast', name: 'Seedance 2.0 Fast', desc: '更快速度' },
-  { id: 'seedance-1-0-pro-t2v', name: 'Seedance 1.0 Pro 文生视频', desc: '1.0 Pro 文生视频' },
-  { id: 'seedance-1-0-pro-i2v', name: 'Seedance 1.0 Pro 图生视频', desc: '1.0 Pro 图生视频' },
-  { id: 'seedance-1-0-lite-t2v', name: 'Seedance 1.0 Lite 文生视频', desc: '1.0 Lite 文生视频' },
-  { id: 'seedance-1-0-lite-i2v', name: 'Seedance 1.0 Lite 图生视频', desc: '1.0 Lite 图生视频' },
+  { id: 'seedance-1-0-lite-t2v', name: 'Seedance 1.0 Lite 文生视频', desc: '1.0 Lite（免费）文生视频' },
+  { id: 'seedance-1-0-lite-i2v', name: 'Seedance 1.0 Lite 图生视频', desc: '1.0 Lite（免费）图生视频' },
+  { id: 'seedance-1-0-pro-t2v', name: 'Seedance 1.0 Pro 文生视频', desc: '1.0 Pro（免费）文生视频' },
+  { id: 'seedance-1-0-pro-i2v', name: 'Seedance 1.0 Pro 图生视频', desc: '1.0 Pro（免费）图生视频' },
+  { id: 'doubao-seedance-2-0-pro', name: 'Seedance 2.0 Pro', desc: '更高质量（消耗积分）' },
+  { id: 'doubao-seedance-2-0-fast', name: 'Seedance 2.0 Fast', desc: '更快速度（消耗积分）' },
 ];
 
-// 自定义 AI 模式常用模型快捷预设（方舟兼容视频生成模型）
+// 自定义模型模式常用模型快捷预设（仅保留需 API Key 的 2.0 系列；1.x 系列归入内置模型免费使用）
 const CUSTOM_MODEL_PRESETS = [
   { id: 'doubao-seedance-2-0-pro', name: 'Seedance 2.0 Pro' },
   { id: 'doubao-seedance-2-0-fast', name: 'Seedance 2.0 Fast' },
-  { id: 'seedance-1-0-pro-t2v', name: 'Seedance 1.0 Pro 文生' },
-  { id: 'seedance-1-0-pro-i2v', name: 'Seedance 1.0 Pro 图生' },
-  { id: 'seedance-1-0-lite-t2v', name: 'Seedance 1.0 Lite 文生' },
-  { id: 'seedance-1-0-lite-i2v', name: 'Seedance 1.0 Lite 图生' },
 ];
 
 // 判断模型 ID 是否仅支持文生视频（t2v 后缀）
@@ -43,6 +39,10 @@ function isT2VOnly(modelId) {
 // 判断模型 ID 是否仅支持图生视频（i2v 后缀）
 function isI2VOnly(modelId) {
   return typeof modelId === 'string' && /-i2v$/i.test(modelId);
+}
+// 判断是否属于 Seedance 1.x 免费系列（不扣积分）
+function isSeedance1xFree(modelId) {
+  return typeof modelId === 'string' && /^seedance-1-0-/i.test(modelId);
 }
 
 // 积分预估：duration × 2 × (1080p ? 2 : 1)
@@ -70,7 +70,7 @@ export default function VideoStudio() {
   const [mode, setMode] = useState('text'); // 'text' | 'image'
   const [prompt, setPrompt] = useState('');
   const [refImage, setRefImage] = useState(null); // { path, dataUrl }
-  const [seedanceModel, setSeedanceModel] = useState('doubao-seedance-2-0-pro');
+  const [seedanceModel, setSeedanceModel] = useState('seedance-1-0-lite-t2v');
   const [duration, setDuration] = useState(5);
   const [resolution, setResolution] = useState('720p');
   const [ratio, setRatio] = useState('16:9');
@@ -78,7 +78,7 @@ export default function VideoStudio() {
   const [seed, setSeed] = useState(-1);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
-  // 自定义 AI 模式：模型选择（本地态，选择时持久化到配置）
+  // 自定义模型模式：模型选择（本地态，选择时持久化到配置）
   const [customModel, setCustomModel] = useState('');
   const [customInputMode, setCustomInputMode] = useState(false); // 是否显示自定义输入框
   const [customInputValue, setCustomInputValue] = useState('');
@@ -92,7 +92,7 @@ export default function VideoStudio() {
     if (mode === 'image') return !isT2VOnly(m.id);
     return !isI2VOnly(m.id);
   });
-  // 自定义 AI 模式可用预设模型（同样按 t2v/i2v 过滤）
+  // 自定义模型模式可用预设模型（同样按 t2v/i2v 过滤）
   const availableCustomModels = CUSTOM_MODEL_PRESETS.filter((m) => {
     if (mode === 'image') return !isT2VOnly(m.id);
     return !isI2VOnly(m.id);
@@ -114,12 +114,12 @@ export default function VideoStudio() {
     loadSeedanceModels();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 模式切换时，若当前选中的模型在新模式下不可用，则回退到 2.0 Pro
+  // 模式切换时，若当前选中的模型在新模式下不可用，则回退到默认免费模型
   useEffect(() => {
     if (isT2VOnly(seedanceModel) && mode === 'image') {
-      setSeedanceModel('doubao-seedance-2-0-pro');
+      setSeedanceModel('seedance-1-0-lite-i2v');
     } else if (isI2VOnly(seedanceModel) && mode === 'text') {
-      setSeedanceModel('doubao-seedance-2-0-pro');
+      setSeedanceModel('seedance-1-0-lite-t2v');
     }
     // 自定义模式：若当前选中模型在新模式下不可用且非自定义输入，回退到 2.0 Pro
     if (isCustom && !customInputMode) {
@@ -143,20 +143,17 @@ export default function VideoStudio() {
 
   const provider = appConfig?.videoProvider || 'seedance';
   const isCustom = provider === 'custom';
-  const isComfyui = provider === 'comfyui';
-  const consumesPoints = provider === 'seedance';
+  const consumesPoints = provider === 'seedance' && !isSeedance1xFree(seedanceModel);
   const isGenerating = ['queued', 'running', 'downloading'].includes(videoGenStatus);
 
   // 自定义模式：是否已配置 API Key
   const customReady = !!(appConfig?.customVideo?.apiKey && appConfig?.customVideo?.baseURL);
-  // ComfyUI 模式：是否已配置服务地址 + 工作流
-  const comfyuiReady = !!(appConfig?.comfyui?.baseURL && appConfig?.comfyui?.workflow?.trim());
-  // 内置模式：积分是否足够
+  // 内置模式：若需要扣积分则积分足够判断；若免费模型直接允许
   const pointsCost = calcPointsCost(duration, resolution);
   const userPoints = user?.points ?? 0;
-  const pointsEnough = userPoints >= pointsCost;
+  const pointsEnough = !consumesPoints || userPoints >= pointsCost;
 
-  const providerReady = isCustom ? customReady : isComfyui ? comfyuiReady : pointsEnough;
+  const providerReady = isCustom ? customReady : pointsEnough;
   const canGenerate = providerReady && (!!prompt.trim() || !!refImage);
 
   const handleSelectImage = async () => {
@@ -198,17 +195,13 @@ export default function VideoStudio() {
       setActiveView('settings');
       return;
     }
-    if (isComfyui && !comfyuiReady) {
-      setActiveView('settings');
-      return;
-    }
     await generateVideo({
       provider,
       mode,
       prompt: prompt.trim(),
       imageUrl: mode === 'image' ? refImage?.dataUrl : undefined,
-      // 内置模式用 UI 选择的 Seedance 模型；自定义模式用 UI 选择/配置的 modelId；ComfyUI 无需 model
-      model: isCustom ? (customModel || appConfig?.customVideo?.modelId) : (isComfyui ? undefined : seedanceModel),
+      // 内置模式用 UI 选择的 Seedance 模型；自定义模式用 UI 选择/配置的 modelId
+      model: isCustom ? (customModel || appConfig?.customVideo?.modelId) : seedanceModel,
       duration,
       resolution,
       ratio,
@@ -234,9 +227,7 @@ export default function VideoStudio() {
     ? (customModel
       ? (CUSTOM_MODEL_PRESETS.find((p) => p.id === customModel)?.name || customModel)
       : '未配置')
-    : isComfyui
-      ? 'ComfyUI 本地'
-      : (allSeedanceModels.find((m) => m.id === seedanceModel)?.name || seedanceModel);
+    : (allSeedanceModels.find((m) => m.id === seedanceModel)?.name || seedanceModel);
 
   return (
     <div className="panel video-studio">
@@ -247,9 +238,8 @@ export default function VideoStudio() {
       </div>
 
       <p className="panel-desc">
-        通过文本提示词或参考图生成短视频。支持<strong>内置 Seedance 2.0</strong>（消耗积分）、
-        <strong>自定义视频生成 AI</strong>（自带 Key，方舟 API 兼容格式）与
-        <strong>ComfyUI 本地部署</strong>（完全免费）。
+        通过文本提示词或参考图生成短视频。支持<strong>内置模型</strong>（含免费 1.0 系列 + 付费积分的 2.0 系列）、
+        <strong>自定义模型</strong>（自带 Key，方舟 API 兼容格式）。
       </p>
 
       {/* 提供商切换 */}
@@ -260,7 +250,7 @@ export default function VideoStudio() {
           disabled={isGenerating}
         >
           <Sparkles size={15} />
-          <span>内置 Seedance</span>
+          <span>内置模型</span>
           <Coins size={12} style={{ marginLeft: 4, opacity: 0.7 }} />
         </button>
         <button
@@ -269,20 +259,12 @@ export default function VideoStudio() {
           disabled={isGenerating}
         >
           <Wand2 size={15} />
-          <span>自定义 AI</span>
-        </button>
-        <button
-          className={`mode-tab ${isComfyui ? 'mode-tab--active' : ''}`}
-          onClick={() => handleSwitchProvider('comfyui')}
-          disabled={isGenerating}
-        >
-          <Cpu size={15} />
-          <span>ComfyUI 本地</span>
+          <span>自定义模型</span>
         </button>
       </div>
 
       {/* 内置模式：积分提示 */}
-      {consumesPoints && (
+      {provider === 'seedance' && (consumesPoints ? (
         <div className={`video-apikey-banner ${pointsEnough ? '' : 'video-apikey-banner--warn'}`}>
           <Coins size={16} />
           <span>
@@ -290,21 +272,20 @@ export default function VideoStudio() {
             {!pointsEnough && '（积分不足，无法生成）'}
           </span>
         </div>
-      )}
+      ) : (
+        <div className="video-apikey-banner">
+          <Sparkles size={16} />
+          <span>
+            当前使用 <strong>{allSeedanceModels.find((m) => m.id === seedanceModel)?.name || seedanceModel}</strong>（免费），无需消耗积分
+          </span>
+        </div>
+      ))}
 
       {/* 自定义模式：未配置提示 */}
       {isCustom && !customReady && (
         <div className="video-apikey-banner video-apikey-banner--warn" onClick={() => setActiveView('settings')}>
           <AlertCircle size={16} />
-          <span>未配置自定义视频生成 AI 的 API Key / Base URL，点击前往「设置」填写</span>
-        </div>
-      )}
-
-      {/* ComfyUI 模式：未配置提示 */}
-      {isComfyui && !comfyuiReady && (
-        <div className="video-apikey-banner video-apikey-banner--warn" onClick={() => setActiveView('settings')}>
-          <AlertCircle size={16} />
-          <span>未配置 ComfyUI 服务地址 / 工作流模板，点击前往「设置」填写</span>
+          <span>未配置自定义模型的 API Key / Base URL，点击前往「设置」填写</span>
         </div>
       )}
 
@@ -376,6 +357,25 @@ export default function VideoStudio() {
 
           {/* 基础参数 */}
           <div className="video-params">
+            {/* 内置 AI 模式：模型下拉框（直接显示在基础参数区） */}
+            {!isCustom && (
+              <div className="param-row">
+                <span className="param-label">AI 模型</span>
+                <select
+                  className="video-model-select"
+                  value={seedanceModel}
+                  onChange={(e) => setSeedanceModel(e.target.value)}
+                  disabled={isGenerating}
+                >
+                  {availableSeedanceModels.map((m) => (
+                    <option key={m.id} value={m.id} title={m.desc || m.name}>
+                      {m.name}（{isSeedance1xFree(m.id) ? '免费' : '消耗积分'}）
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <div className="param-row">
               <span className="param-label">时长</span>
               <div className="param-options">
@@ -433,105 +433,69 @@ export default function VideoStudio() {
           </button>
           {showAdvanced && (
             <div className="video-advanced">
-              {/* ===== 模型选择 ===== */}
+              {/* ===== 模型选择（仅自定义模型模式） ===== */}
+              {isCustom && (
               <div className="video-advanced-section">
                 <span className="video-advanced-section-title">模型</span>
 
-                {/* 内置 Seedance 模式：按钮选择 */}
-                {!isCustom && !isComfyui && (
-                  <div className="video-advanced-field">
-                    <div className="param-options">
-                      {availableSeedanceModels.map((m) => (
-                        <button
-                          key={m.id}
-                          className={`param-option ${seedanceModel === m.id ? 'param-option--active' : ''}`}
-                          onClick={() => setSeedanceModel(m.id)}
-                          disabled={isGenerating}
-                          title={m.desc || m.name}
-                        >
-                          {m.name}
-                        </button>
-                      ))}
-                    </div>
-                    <span className="video-advanced-hint">
-                      {mode === 'image' ? '图生模式下仅显示支持图生的模型' : '文生模式下仅显示支持文生的模型'}
-                    </span>
-                  </div>
-                )}
-
-                {/* 自定义 AI 模式：预设按钮 + 自定义输入 */}
-                {isCustom && (
-                  <div className="video-advanced-field">
-                    <div className="param-options">
-                      {availableCustomModels.map((m) => (
-                        <button
-                          key={m.id}
-                          className={`param-option ${!customInputMode && customModel === m.id ? 'param-option--active' : ''}`}
-                          onClick={() => handleSelectCustomModel(m.id)}
-                          disabled={isGenerating}
-                          title={m.id}
-                        >
-                          {m.name}
-                        </button>
-                      ))}
+                {/* 自定义模型模式：预设按钮 + 自定义输入 */}
+                <div className="video-advanced-field">
+                  <div className="param-options">
+                    {availableCustomModels.map((m) => (
                       <button
-                        className={`param-option param-option--custom ${customInputMode ? 'param-option--active' : ''}`}
-                        onClick={handleSwitchToCustomInput}
+                        key={m.id}
+                        className={`param-option ${!customInputMode && customModel === m.id ? 'param-option--active' : ''}`}
+                        onClick={() => handleSelectCustomModel(m.id)}
                         disabled={isGenerating}
+                        title={m.id}
                       >
-                        自定义...
+                        {m.name}
                       </button>
+                    ))}
+                    <button
+                      className={`param-option param-option--custom ${customInputMode ? 'param-option--active' : ''}`}
+                      onClick={handleSwitchToCustomInput}
+                      disabled={isGenerating}
+                    >
+                      自定义...
+                    </button>
+                  </div>
+                  {customInputMode && (
+                    <div className="custom-model-input-row">
+                      <input
+                        type="text"
+                        className="custom-model-input"
+                        value={customInputValue}
+                        onChange={(e) => setCustomInputValue(e.target.value)}
+                        onBlur={handleApplyCustomModel}
+                        onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                        placeholder="输入模型 ID，如 doubao-seedance-2-0-pro"
+                        disabled={isGenerating}
+                      />
                     </div>
-                    {customInputMode && (
-                      <div className="custom-model-input-row">
-                        <input
-                          type="text"
-                          className="custom-model-input"
-                          value={customInputValue}
-                          onChange={(e) => setCustomInputValue(e.target.value)}
-                          onBlur={handleApplyCustomModel}
-                          onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
-                          placeholder="输入模型 ID，如 doubao-seedance-2-0-pro"
-                          disabled={isGenerating}
-                        />
-                      </div>
-                    )}
-                    <span className="video-advanced-hint">
-                      {mode === 'image' ? '图生模式下仅显示支持图生的模型，' : '文生模式下仅显示支持文生的模型，'}
-                      点击「自定义」可输入其他模型 ID
-                    </span>
-                  </div>
-                )}
-
-                {/* ComfyUI 模式：显示工作流配置状态 */}
-                {isComfyui && (
-                  <div className="video-advanced-field">
-                    <span className="video-advanced-hint">
-                      {appConfig?.comfyui?.workflow?.trim()
-                        ? '已配置工作流（参数通过占位符注入）'
-                        : '未配置工作流（请在设置中填写）'}
-                    </span>
-                  </div>
-                )}
+                  )}
+                  <span className="video-advanced-hint">
+                    点击「自定义」可输入其他模型 ID
+                  </span>
+                </div>
               </div>
+              )}
 
               {/* ===== 输出选项 ===== */}
               <div className="video-advanced-section">
                 <span className="video-advanced-section-title">输出选项</span>
 
-                {/* 水印：仅方舟模式支持；ComfyUI 由工作流节点控制 */}
-                {!isComfyui && (
-                  <div className="video-advanced-field video-advanced-field--inline">
-                    <span className="video-advanced-field-label">水印</span>
-                    <button
-                      className={`param-toggle ${watermark ? 'param-toggle--on' : ''}`}
-                      onClick={() => setWatermark(!watermark)}
-                      disabled={isGenerating}
-                    >
-                      <span className="param-toggle-knob" />
-                    </button>
-                  </div>
-                )}
+                {/* 水印 */}
+                <div className="video-advanced-field video-advanced-field--inline">
+                  <span className="video-advanced-field-label">水印</span>
+                  <button
+                    className={`param-toggle ${watermark ? 'param-toggle--on' : ''}`}
+                    onClick={() => setWatermark(!watermark)}
+                    disabled={isGenerating}
+                  >
+                    <span className="param-toggle-knob" />
+                  </button>
+                </div>
 
                 {/* 随机种子 */}
                 <div className="video-advanced-field video-advanced-field--inline">
@@ -546,7 +510,7 @@ export default function VideoStudio() {
                     disabled={isGenerating}
                   />
                   <span className="video-advanced-hint video-advanced-hint--inline">
-                    {isComfyui ? '-1 随机（注入 {{seed}}）' : '-1 = 随机'}
+                    -1 = 随机
                   </span>
                 </div>
               </div>
@@ -601,7 +565,7 @@ export default function VideoStudio() {
                 <CheckCircle2 size={16} className="video-latest-icon" />
                 <span>最新生成</span>
                 <span className="video-latest-provider">
-                  {videoHistory[0].provider === 'custom' ? '自定义' : videoHistory[0].provider === 'comfyui' ? 'ComfyUI' : 'Seedance'}
+                  {videoHistory[0].provider === 'custom' ? '自定义' : 'Seedance'}
                 </span>
               </div>
               <div className="video-player-wrapper">
@@ -656,7 +620,7 @@ export default function VideoStudio() {
                         <span>{item.duration}秒</span>
                         <span>{item.params.resolution}</span>
                         <span>{item.params.ratio}</span>
-                        <span>{item.provider === 'custom' ? '自定义' : item.provider === 'comfyui' ? 'ComfyUI' : 'Seedance'}</span>
+                        <span>{item.provider === 'custom' ? '自定义' : 'Seedance'}</span>
                       </div>
                       <span className="video-history-time">
                         {new Date(item.createdAt).toLocaleString('zh-CN')}

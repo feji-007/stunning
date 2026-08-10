@@ -1,11 +1,14 @@
 /**
- * 视频生成路由（内置 Seedance，由服务器调用方舟 API，消耗用户积分）
+ * 视频生成路由（内置模型，由服务器调用方舟 API）
  *
- *  - POST /api/video/generate        创建视频生成任务（预扣积分 + 调用方舟建任务）
+ *  - POST /api/video/generate        创建视频生成任务（Seedance 2.0 预扣积分；1.x 免费；失败自动退还）
  *  - GET  /api/video/tasks/:taskId   查询任务状态（代理方舟；失败自动退还积分）
  *  - GET  /api/video/history         当前用户的历史任务列表
  *
- * 仅支持内置 Seedance 模式。用户自定义视频生成 AI（自带 key）由客户端直接调用，
+ * Seedance 1.0（模型 ID 以 seedance-1-0- 开头）：免费，不扣积分，不做 API Key 校验。
+ * Seedance 2.0（模型 ID 以 doubao-seedance-2-0- 开头）：消耗积分，需 ARK_API_KEY。
+ *
+ * 仅支持内置模型模式。用户自定义模型（自带 key）由客户端直接调用，
  * 不经过此路由、不消耗积分。
  */
 const express = require('express');
@@ -15,6 +18,11 @@ const { authRequired } = require('../middleware/auth');
 const { createVideoTask, getVideoTask } = require('../services/arkService');
 
 const router = express.Router();
+
+// 判断是否 Seedance 1.x 免费模型（无需 API Key、不扣积分）
+function isSeedance1xFree(modelId) {
+  return typeof modelId === 'string' && /^seedance-1-0-/i.test(modelId);
+}
 
 function calcPointsCost({ duration, resolution }) {
   const dur = parseInt(duration, 10) || 5;
@@ -52,12 +60,14 @@ router.post('/generate', authRequired, async (req, res) => {
     return res.status(400).json({ error: '提示词和参考图至少需要提供一项' });
   }
 
-  const pointsCost = calcPointsCost({ duration, resolution });
+  // Seedance 1.x 免费模型：不扣积分；其他模型按规则扣积分
+  const free = isSeedance1xFree(model);
+  const pointsCost = free ? 0 : calcPointsCost({ duration, resolution });
   const userRow = await db.get('SELECT points FROM users WHERE id = ?', req.user.id);
   if (!userRow) {
     return res.status(404).json({ error: '用户不存在' });
   }
-  if (userRow.points < pointsCost) {
+  if (pointsCost > 0 && userRow.points < pointsCost) {
     return res.status(402).json({
       error: `积分不足，本次需要 ${pointsCost} 积分，当前剩余 ${userRow.points}`,
       pointsRequired: pointsCost,
@@ -66,13 +76,17 @@ router.post('/generate', authRequired, async (req, res) => {
   }
 
   const now = Date.now();
-  await db.run('UPDATE users SET points = points - ?, updated_at = ? WHERE id = ?', pointsCost, now, req.user.id);
+  if (pointsCost > 0) {
+    await db.run('UPDATE users SET points = points - ?, updated_at = ? WHERE id = ?', pointsCost, now, req.user.id);
+  }
 
   let arkTask;
   try {
     arkTask = await createVideoTask({ prompt, imageUrl, duration, resolution, ratio, watermark, seed, model });
   } catch (err) {
-    await db.run('UPDATE users SET points = points + ?, updated_at = ? WHERE id = ?', pointsCost, Date.now(), req.user.id);
+    if (pointsCost > 0) {
+      await db.run('UPDATE users SET points = points + ?, updated_at = ? WHERE id = ?', pointsCost, Date.now(), req.user.id);
+    }
     return res.status(502).json({ error: err.message || '调用方舟创建任务失败' });
   }
 
@@ -89,6 +103,7 @@ router.post('/generate', authRequired, async (req, res) => {
 
   res.status(201).json({
     ...serializeTask(row),
+    pointsCost,
     pointsRemaining: remainingRow.points,
   });
 });
@@ -117,10 +132,11 @@ router.get('/tasks/:taskId', authRequired, async (req, res) => {
     if (status === 'succeeded') {
       await db.run('UPDATE video_tasks SET status = ?, video_url = ?, updated_at = ? WHERE id = ?', 'succeeded', videoUrl, now, row.id);
     } else if (status === 'failed') {
-      if (!row.refunded) {
+      if (!row.refunded && row.points_cost > 0) {
         await db.run('UPDATE users SET points = points + ?, updated_at = ? WHERE id = ?', row.points_cost, now, row.user_id);
       }
-      await db.run('UPDATE video_tasks SET status = ?, error = ?, refunded = ?, updated_at = ? WHERE id = ?', 'failed', errorMsg, 1, now, row.id);
+      const refunded = row.points_cost > 0 ? 1 : 0;
+      await db.run('UPDATE video_tasks SET status = ?, error = ?, refunded = ?, updated_at = ? WHERE id = ?', 'failed', errorMsg, refunded, now, row.id);
     } else {
       await db.run('UPDATE video_tasks SET status = ?, updated_at = ? WHERE id = ?', status, now, row.id);
     }

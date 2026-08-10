@@ -2,7 +2,7 @@
 
 > AI 视频生成桌面应用（Electron + React）
 >
-> 支持内置 Seedance（1.0 / 2.0 系列，消耗积分）与自定义视频生成 AI（自带 Key，方舟 API 兼容格式，支持连通性测试）。
+> 支持内置模型（1.0 系列免费、2.0 系列消耗积分）与自定义模型（自带 Key，方舟 API 兼容格式，支持连通性测试）。
 >
 > 本文档基于重构后的源码生成，仅涵盖视频生成相关架构与模块说明。
 
@@ -31,13 +31,14 @@
 
 | 模式 | 实现方式 | Key 归属 | 积分 |
 |------|----------|----------|------|
-| **内置 Seedance** | 服务器调用火山引擎方舟 API（Seedance 1.0 / 2.0 系列，后台可配） | 服务器持有（`ARK_API_KEY`） | 消耗用户积分（失败自动退还） |
-| **自定义视频生成 AI** | 客户端直接调用用户配置的方舟兼容端点（含连通性测试） | 用户自带（存本地配置） | 不消耗积分 |
+| **内置模型 1.0** | 服务器调用火山引擎方舟 API（Seedance 1.0 Pro/Lite × t2v/i2v，免费模型） | 服务器统一调用（免 Key） | **免费，不消耗积分** |
+| **内置模型 2.0** | 服务器调用火山引擎方舟 API（Seedance 2.0 Pro/Fast） | 服务器持有（`ARK_API_KEY`） | 消耗用户积分（失败自动退还） |
+| **自定义模型** | 客户端直接调用用户配置的方舟兼容端点（含连通性测试） | 用户自带（存本地配置） | 不消耗积分 |
 
 应用采用 **客户端 + 独立后端服务器** 的架构：
 
 - **客户端（Electron 桌面应用）**：视频生成 UI、生成流程编排、配置管理、本地视频下载。
-- **后端服务器（独立 Express 服务）**：用户认证（JWT）、用户资料/积分、内置 Seedance 视频生成（服务器持有方舟 Key 并扣减用户积分）、SQLite 数据库。
+- **后端服务器（独立 Express 服务）**：用户认证（JWT）、用户资料/积分、内置模型视频生成（服务器持有方舟 Key 并扣减用户积分）、SQLite 数据库。
 
 方舟 API 凭证、数据库连接信息全部留在服务器端，客户端只感知账号密码（类似 QQ / 微信）。
 
@@ -90,17 +91,17 @@
 | 层 | 目录 | 运行环境 | 职责 |
 |----|------|----------|------|
 | 主进程 | `electron/` | Node.js（Electron 主进程） | 视频生成流程编排（内置/自定义）、配置持久化、与后端服务器通信、IPC 路由、视频下载 |
-| 后端服务器 | `server/` | 独立 Node.js 进程 | 用户认证、用户资料/积分、内置 Seedance 视频生成（持方舟 Key + 扣积分）、SQLite 持久化 |
+| 后端服务器 | `server/` | 独立 Node.js 进程 | 用户认证、用户资料/积分、内置模型视频生成（持方舟 Key + 扣积分）、SQLite 持久化 |
 | 渲染进程 | `src/` | Chromium（Electron 渲染进程） | UI 渲染、状态管理、通过 IPC 桥接调用主进程能力 |
 
 ### 双模式视频生成对比
 
-| 维度 | 内置 Seedance | 自定义 AI |
+| 维度 | 内置模型 | 自定义模型 |
 |------|---------------|-----------|
 | 触发位置 | 服务器 `routes/video.js` | 客户端 `videoService.js` |
-| 方舟 Key 来源 | `server/config.js` 的 `ARK_API_KEY` | 客户端 `configStore.js` 的 `customVideo.apiKey` |
+| 方舟 Key 来源 | `server/config.js` 的 `ARK_API_KEY`（1.0 免费模型免 Key） | 客户端 `configStore.js` 的 `customVideo.apiKey` |
 | 模型选择 | UI 选择（后台维护的模型列表，含 1.0 / 2.0 系列，动态拉取） | 设置面板填写 `modelId`（含快捷预设） |
-| 积分 | 预扣 → 失败退还 | 不计积分 |
+| 积分 | 1.0 免费；2.0 预扣 → 失败退还 | 不计积分 |
 | 任务记录 | 服务器 `video_tasks` 表 | 仅本地内存历史 |
 | 调用链路 | 客户端→服务器→方舟 | 客户端→方舟 |
 
@@ -116,7 +117,7 @@ stunning/
 │   ├── ipc-handlers.js        # IPC 通道处理器（路由到各服务）
 │   ├── configStore.js         # 应用配置持久化（~/.stunning/config.json）
 │   ├── serverClient.js        # 后端服务器 HTTP 客户端（token 注入）
-│   └── videoService.js        # 视频生成服务（内置 Seedance + 自定义 AI）
+│   └── videoService.js        # 视频生成服务（内置模型 + 自定义模型）
 ├── server/                    # 后端服务器（独立部署）
 │   ├── index.js               # Express 入口
 │   ├── config.js              # 服务器配置（端口、DB、JWT、方舟 Key、积分规则）
@@ -125,7 +126,7 @@ stunning/
 │   ├── routes/
 │   │   ├── auth.js            # 注册 / 登录
 │   │   ├── user.js            # 资料 / 头像 / 积分
-│   │   └── video.js           # 内置 Seedance 视频生成（积分扣减）
+│   │   └── video.js           # 内置模型视频生成（积分扣减）
 │   ├── services/
 │   │   └── arkService.js      # 方舟 API 封装（建任务 / 查任务）
 │   └── data/stunning.db       # SQLite 数据库文件
@@ -137,7 +138,7 @@ stunning/
 │   │   ├── Sidebar.jsx        # 品牌 + 导航
 │   │   ├── UserMenu.jsx       # 用户菜单（头像/昵称/积分/退出）
 │   │   ├── VideoStudio.jsx    # 视频工作室（生成主界面）
-│   │   └── SettingsPanel.jsx  # 设置（提供商切换/自定义AI/输出目录）
+│   │   └── SettingsPanel.jsx  # 设置（提供商切换/自定义模型/输出目录）
 │   ├── ipc/bridge.js          # IPC 桥接层（带 mock 回退）
 │   ├── store/useStore.js      # Zustand 全局状态
 │   └── styles/global.css      # 全局样式
@@ -191,11 +192,10 @@ stunning/
 | `video:select-image` | 打开文件对话框选参考图，返回 `{ path, dataUrl }`（base64） |
 | `video:select-output-dir` / `video:output-dir` / `video:open-folder` | 视频输出目录管理 |
 | `video:history` | 拉取服务器端任务历史（仅内置模式有记录） |
-| `video:get-models` | 拉取后台维护的内置 Seedance 模型列表（含 1.0 / 2.0 系列） |
+| `video:get-models` | 拉取后台维护的内置模型列表（含 1.0 / 2.0 系列） |
 | `video:generate` | 视频生成主入口，内部按 `provider` 分发；通过 `event.sender` 推送进度/成功/失败事件 |
 | `video:cancel` | 取消当前生成（中断轮询） |
-| `video:test-comfyui` | 测试 ComfyUI 连通性 |
-| `video:test-custom` | 测试自定义 AI 连通性（验证 Base URL + API Key + 可选模型校验） |
+| `video:test-custom` | 测试自定义模型连通性（验证 Base URL + API Key + 可选模型校验） |
 
 所有通过 `event.sender` 推送事件前都检查 `sender.isDestroyed()`，避免窗口关闭后发送报错。
 
@@ -254,8 +254,7 @@ GET  /contents/generations/tasks/{task_id}  轮询状态
 | `pollUntilDone(pollFn, onProgress, polling)` | 通用轮询：3s 间隔、10 分钟超时、支持取消；状态变化时回调 `onProgress` |
 | `downloadVideo(videoUrl, filename)` | 下载视频到 `getVideoOutputDir()`，文件名清洗后存为 `.mp4` |
 | `readImageAsDataUrl(filePath)` | 读取本地图片为 base64 data URL（图生视频上传用） |
-| `testComfyuiConnection(baseURL)` | 测试 ComfyUI 连通性（GET `/system_stats`） |
-| `testCustomConnection(baseURL, apiKey, modelId?)` | 测试自定义 AI 连通性（GET `/models`，验证 API Key；若传 `modelId` 额外校验是否已开通） |
+| `testCustomConnection(baseURL, apiKey, modelId?)` | 测试自定义模型连通性（GET `/models`，验证 API Key；若传 `modelId` 额外校验是否已开通） |
 | `cancel()` | 取消当前轮询（`clearTimeout` + 标记 `aborted`） |
 
 **模块级状态：** `activePolling`（当前轮询句柄，用于取消）。
@@ -297,7 +296,7 @@ generate(params, onProgress):
 - 路由挂载：`/api/auth`、`/api/user`、`/api/video`
 - 统一错误处理中间件
 - 监听 `config.port`
-- 启动时检查 `ARK_API_KEY`，未配置则警告（内置 Seedance 将不可用）
+- 启动时检查 `ARK_API_KEY`，未配置则警告（内置模型将不可用）
 
 ### 5.2 config.js — 服务器配置
 
@@ -312,7 +311,7 @@ generate(params, onProgress):
 | `defaultPoints` | 100 | — |
 | `ark.baseURL` | `https://ark.cn-beijing.volces.com/api/v3` | `ARK_BASE_URL` |
 | `ark.apiKey` | （空） | `ARK_API_KEY` |
-| `ark.defaultModel` | `doubao-seedance-2-0-pro` | `ARK_MODEL` |
+| `ark.defaultModel` | `seedance-1-0-lite-t2v` | `ARK_MODEL` |
 | `videoPoints.basePerSecond` | 2 | — |
 | `videoPoints.hdMultiplier` | 2 | — |
 
@@ -349,36 +348,41 @@ generate(params, onProgress):
 | `GET /points` | 查询积分 |
 | `POST /points` | 增减积分（`delta`，下限 0，演示用） |
 
-### 5.7 routes/video.js — 内置 Seedance 视频生成路由（核心）
+### 5.7 routes/video.js — 内置模型视频生成路由（核心）
 
-全部需 `authRequired`。仅支持内置 Seedance 模式（自定义 AI 由客户端直接调用，不经过此路由）。
+全部需 `authRequired`。仅支持内置模型模式（自定义模型由客户端直接调用，不经过此路由）。
+
+**模型免费判定：** `isSeedance1xFree(modelId)` 匹配 `^seedance-1-0-` 前缀。Seedance 1.0 系列（Pro/Lite × t2v/i2v）为免费模型，`pointsCost = 0`，不预扣积分、不做积分余额校验、失败时也不退还；2.0 系列（`doubao-seedance-2-0-*`）按积分规则扣减。
 
 | 函数/路由 | 说明 |
 |-----------|------|
-| `calcPointsCost({ duration, resolution })` | 计算积分消耗：`duration × basePerSecond × (1080p ? hdMultiplier : 1)` |
+| `isSeedance1xFree(modelId)` | 判断是否 Seedance 1.x 免费模型（`pointsCost = 0`） |
+| `calcPointsCost({ duration, resolution })` | 计算积分消耗：`duration × basePerSecond × (1080p ? hdMultiplier : 1)`（仅 2.x 生效） |
 | `serializeTask(row)` | 序列化任务（驼峰字段，`refunded` 转 bool，`params` 解析 JSON） |
-| `POST /generate` | **创建任务**：校验积分余额 → 预扣积分 → `arkService.createVideoTask` 建方舟任务 → 入库。建任务失败则退还预扣积分。返回 `{ ...task, pointsRemaining }` |
-| `GET /tasks/:taskId` | **查询任务**：终态直接返回本地记录；未到终态则代理查询方舟。`succeeded` 更新 `video_url`；`failed` 且未退还则自动退还积分并标记 `refunded=1`。返回 `{ ...task, pointsRemaining }` |
+| `POST /generate` | **创建任务**：免费模型 `pointsCost=0` 跳过积分校验与预扣；付费模型校验积分余额 → 预扣积分 → `arkService.createVideoTask` 建方舟任务 → 入库。建任务失败则退还预扣积分（免费模型无需退还）。返回 `{ ...task, pointsCost, pointsRemaining }` |
+| `GET /tasks/:taskId` | **查询任务**：终态直接返回本地记录；未到终态则代理查询方舟。`succeeded` 更新 `video_url`；`failed` 且 `points_cost > 0` 且未退还则自动退还积分并标记 `refunded=1`（免费模型 `points_cost=0` 不退还）。返回 `{ ...task, pointsRemaining }` |
 | `GET /history` | 当前用户历史任务（限 50，按时间倒序） |
 
 **积分扣减与退还机制：**
 
 ```
 创建任务:
-  校验 points >= cost
-  预扣: UPDATE users SET points = points - cost
+  cost = isSeedance1xFree(model) ? 0 : calcPointsCost(...)
+  if cost > 0:
+    校验 points >= cost
+    预扣: UPDATE users SET points = points - cost
   调方舟建任务
-    失败 → 退还: UPDATE users SET points = points + cost
+    失败 → if cost > 0: 退还: UPDATE users SET points = points + cost
     成功 → 入库 video_tasks(points_cost=cost, refunded=0)
 
 查询任务（轮询期间）:
   方舟返回 succeeded → 更新 video_url
-  方舟返回 failed 且 refunded=0 → 退还积分 + refunded=1
+  方舟返回 failed 且 cost > 0 且 refunded=0 → 退还积分 + refunded=1
 ```
 
 ### 5.8 services/arkService.js — 方舟 API 封装
 
-服务器端调用火山引擎方舟 API（仅内置 Seedance 模式使用）。
+服务器端调用火山引擎方舟 API（仅内置模型模式使用）。
 
 | 函数 | 说明 |
 |------|------|
@@ -403,7 +407,7 @@ generate(params, onProgress):
 - 未初始化完成 → 加载动画
 - 未登录 → `<Login />`
 - 已登录 → 初始化主界面（`loadAppConfig()`）
-- 顶栏：左侧当前视频生成提供商信息（内置 Seedance / 自定义 AI + 模型 ID），右侧 `<UserMenu />`
+- 顶栏：左侧当前视频生成提供商信息（内置模型 / 自定义模型 + 模型 ID），右侧 `<UserMenu />`
 - `renderMainContent()` 按 `activeView` 切换：`video` / `settings`
 
 ### 6.3 ipc/bridge.js — IPC 桥接层
@@ -440,14 +444,14 @@ generate(params, onProgress):
 | Sidebar | components/Sidebar.jsx | 品牌 + 导航（视频生成 / 设置） |
 | UserMenu | components/UserMenu.jsx | 右上角用户菜单：头像/昵称/积分、编辑资料（昵称+头像）、退出登录 |
 | VideoStudio | components/VideoStudio.jsx | **视频工作室**（核心）：提供商切换（内置/自定义）、文生/图生切换、参数面板（时长/分辨率/比例/模型/水印/种子）、积分预估、进度显示、最新结果预览、历史记录 |
-| SettingsPanel | components/SettingsPanel.jsx | **设置**：视频生成提供商选择、自定义 AI 配置（Base URL/API Key/模型 ID + 连通性测试 + 模型快捷预设）、ComfyUI 配置（服务地址 + 工作流模板 + 连通性测试）、视频保存目录、积分规则说明 |
+| SettingsPanel | components/SettingsPanel.jsx | **设置**：视频生成提供商选择（内置模型 / 自定义模型）、自定义模型配置（Base URL/API Key/模型 ID + 连通性测试 + 模型快捷预设）、视频保存目录、积分规则说明（含 Seedance 1.x 免费说明） |
 
 ### 6.6 VideoStudio.jsx 关键设计
 
 - **提供商切换**：顶部 Tab 切换 `seedance` / `custom`，调用 `saveAppConfig({ videoProvider })` 持久化
-- **积分预估**：`calcPointsCost(duration, resolution) = duration × 2 × (1080p ? 2 : 1)`，实时显示「预计消耗 X 积分，当前剩余 Y 积分」，不足时禁用生成按钮
-- **模型列表动态拉取**：启动时通过 `GET /api/video/models` 拉取后台维护的内置 Seedance 模型列表（含 1.0 / 2.0 系列），服务器不可达时回退到本地默认列表
-- **文生/图生模式过滤**：Seedance 1.0 区分 t2v（文生）/ i2v（图生）模型，切换模式时自动过滤可用模型，当前选中模型不可用时回退到 2.0 Pro
+- **积分预估**：`calcPointsCost(duration, resolution) = duration × 2 × (1080p ? 2 : 1)`；内置模式选中 Seedance 1.x 免费模型时显示「免费，不消耗积分」，2.x 模型才显示「预计消耗 X 积分，当前剩余 Y 积分」，不足时禁用生成按钮
+- **模型列表动态拉取**：启动时通过 `GET /api/video/models` 拉取后台维护的内置模型列表（含 1.0 / 2.0 系列），服务器不可达时回退到本地默认列表
+- **文生/图生模式过滤**：Seedance 1.0 区分 t2v（文生）/ i2v（图生）模型，切换模式时自动过滤可用模型，当前选中模型不可用时回退到 1.0 Lite（免费）
 - **自定义模式未配置提示**：未填 API Key 时显示警告横幅，点击跳转设置
 - **文生/图生切换**：图生模式可选择参考图（PNG/JPG/WEBP/GIF），转 base64 上传
 - **高级参数**：内置模式可选 Seedance 模型（1.0 Pro/Lite × t2v/i2v + 2.0 Pro/Fast）；水印开关；随机种子（-1 随机）
@@ -458,7 +462,7 @@ generate(params, onProgress):
 
 ## 7. 视频生成关键数据流
 
-### 7.1 内置 Seedance 视频生成（端到端，含积分）
+### 7.1 内置模型视频生成（端到端，含积分）
 
 ```
 VideoStudio.handleGenerate
@@ -470,7 +474,9 @@ VideoStudio.handleGenerate
       ├─ serverClient.createVideoTask(params)
       │    → POST http://localhost:3001/api/video/generate
       │    → server/routes/video.js:
-      │         校验积分 → 预扣积分 → arkService.createVideoTask
+      │         cost = isSeedance1xFree(model) ? 0 : calcPointsCost(...)
+      │         if cost > 0: 校验积分 → 预扣积分
+      │         → arkService.createVideoTask
       │           → POST https://ark.../contents/generations/tasks
       │         入库 video_tasks → 返回 { taskId, pointsCost, pointsRemaining }
       │
@@ -478,7 +484,7 @@ VideoStudio.handleGenerate
       │    → GET http://localhost:3001/api/video/tasks/:taskId
       │    → server/routes/video.js: 代理查询方舟
       │         succeeded → 更新 video_url
-      │         failed    → 退还积分 + refunded=1
+      │         failed    → if cost > 0: 退还积分 + refunded=1
       │    → onProgress(stage) → IPC event: video:progress
       │
       └─ downloadVideo(videoUrl) → 本地 .mp4
@@ -486,7 +492,7 @@ VideoStudio.handleGenerate
   → useStore: 加入 videoHistory + refreshPoints()
 ```
 
-### 7.2 自定义视频生成 AI（客户端直连，不消耗积分）
+### 7.2 自定义模型（客户端直连，不消耗积分）
 
 ```
 VideoStudio.handleGenerate
@@ -574,7 +580,7 @@ server/index.js → db.js → config.js
 
 | 配置项 | 位置 | 说明 |
 |--------|------|------|
-| 客户端配置 | `~/.stunning/config.json` | `videoProvider`、`videoDefaults`、`customVideo`（含用户自定义 AI 的 baseURL/apiKey/modelId）、`serverUrl`、`authToken`、`userId`。沙箱不可写时回退到 `cwd/.data/config.json` |
+| 客户端配置 | `~/.stunning/config.json` | `videoProvider`、`videoDefaults`、`customVideo`（含用户自定义模型的 baseURL/apiKey/modelId）、`serverUrl`、`authToken`、`userId`。沙箱不可写时回退到 `cwd/.data/config.json` |
 | 后端数据库 | `server/data/stunning.db` | 部署在服务器，客户端无感 |
 | 后端方舟 Key | `server/config.js` / `ARK_API_KEY` 环境变量 | 仅服务器持有，客户端无法获取 |
 | 视频下载目录 | `~/Videos/stunning/` | 可在设置中改；不可写时逐级回退 |
@@ -599,7 +605,7 @@ SQLite（`node:sqlite` `DatabaseSync`），WAL 模式，外键开启。
 | points | INTEGER DEFAULT 100 | 积分（新用户赠送 100） |
 | created_at / updated_at | INTEGER | 毫秒时间戳 |
 
-### video_tasks — 视频生成任务（仅内置 Seedance 模式记录）
+### video_tasks — 视频生成任务（仅内置模型模式记录）
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -612,14 +618,14 @@ SQLite（`node:sqlite` `DatabaseSync`），WAL 模式，外键开启。
 | params | TEXT | JSON 字符串，生成参数（duration/resolution/ratio/watermark/seed） |
 | status | TEXT DEFAULT 'queued' | queued / running / succeeded / failed |
 | video_url | TEXT | 成功后的视频下载地址 |
-| points_cost | INTEGER DEFAULT 0 | 预扣积分 |
-| refunded | INTEGER DEFAULT 0 | 失败是否已退还（0/1） |
+| points_cost | INTEGER DEFAULT 0 | 预扣积分（Seedance 1.x 免费模型为 0） |
+| refunded | INTEGER DEFAULT 0 | 失败是否已退还（0/1；points_cost=0 时恒为 0） |
 | error | TEXT | 失败原因 |
 | created_at / updated_at | INTEGER | 毫秒时间戳 |
 
 索引：`idx_video_tasks_user(user_id, created_at)`。
 
-> 自定义 AI 模式的生成记录不写入数据库，仅存在客户端内存历史中（`useStore.videoHistory`）。
+> 自定义模型模式的生成记录不写入数据库，仅存在客户端内存历史中（`useStore.videoHistory`）。
 
 ---
 
@@ -641,7 +647,7 @@ SQLite（`node:sqlite` `DatabaseSync`），WAL 模式，外键开启。
 | POST | `/api/video/generate` | 是 | **创建视频生成任务**（预扣积分 + 调方舟），返回 `{ taskId, arkTaskId, status, pointsCost, pointsRemaining }` |
 | GET | `/api/video/tasks/:taskId` | 是 | **查询任务状态**（代理方舟；失败自动退还积分），返回 `{ status, videoUrl, refunded, pointsRemaining }` |
 | GET | `/api/video/history` | 是 | 当前用户历史视频任务（限 50） |
-| GET | `/api/video/models` | 是 | 拉取后台维护的内置 Seedance 模型列表（含 1.0 / 2.0 系列），返回 `{ models: [{ id, name, desc }] }` |
+| GET | `/api/video/models` | 是 | 拉取后台维护的内置模型列表（含 1.0 / 2.0 系列），返回 `{ models: [{ id, name, desc }] }` |
 
 ### 11.2 方舟视频生成 API（两种模式共用）
 
@@ -687,7 +693,7 @@ cd ..
 ```bash
 # 终端 1：后端服务器（http://localhost:3001）
 cd server
-# 配置方舟 API Key（内置 Seedance 视频生成必需）
+# 配置方舟 API Key（内置模型视频生成必需）
 $env:ARK_API_KEY="你的方舟API Key"      # Windows PowerShell
 # export ARK_API_KEY="你的方舟API Key"   # macOS/Linux
 npm start            # node --experimental-sqlite index.js
@@ -714,8 +720,8 @@ npm install --omit=dev
 
 export PORT=3001
 export JWT_SECRET="your-strong-secret"
-export ARK_API_KEY="你的方舟API Key"           # 内置 Seedance 必需
-export ARK_MODEL="doubao-seedance-2-0-pro"     # 可选，默认即此
+export ARK_API_KEY="你的方舟API Key"           # 内置模型 2.0 必需（1.0 免费模型无需）
+export ARK_MODEL="seedance-1-0-lite-t2v"       # 可选，默认即此（1.0 Lite 免费）
 export STUNNING_DATA_DIR="/var/lib/stunning"
 
 node --experimental-sqlite index.js
@@ -746,8 +752,8 @@ node --experimental-sqlite index.js
 ### 12.7 典型使用流程
 
 1. 启动后端服务器（配置 `ARK_API_KEY`）→ 启动客户端 → 注册账号（送 100 积分）→ 登录
-2. **内置 Seedance 模式**（默认）：在「视频工作室」直接生成，消耗积分（5s/720p=10 分，5s/1080p=20 分，10s 翻倍），失败自动退还
-3. **自定义 AI 模式**：在「设置」切换为「自定义 AI」，填入方舟兼容的 Base URL / API Key / 模型 ID → 返回「视频工作室」生成（不消耗积分）
+2. **内置模型模式**（默认）：在「视频工作室」直接生成，消耗积分（5s/720p=10 分，5s/1080p=20 分，10s 翻倍），失败自动退还
+3. **自定义模型模式**：在「设置」切换为「自定义模型」，填入方舟兼容的 Base URL / API Key / 模型 ID → 返回「视频工作室」生成（不消耗积分）
 4. 生成成功后视频自动下载到「视频保存目录」，可在应用内预览或打开目录
 
 ### 12.8 积分规则
@@ -759,13 +765,15 @@ node --experimental-sqlite index.js
 
 公式：`duration × 2 × (1080p ? 2 : 1)`。生成失败自动退还预扣积分。
 
+> **Seedance 1.0 系列（Pro/Lite × t2v/i2v）为免费模型，不消耗积分**，积分规则仅适用于 Seedance 2.0 Pro/Fast。
+
 ---
 
 ## 附：关键设计要点
 
-- **双模式统一入口**：`videoService.generate()` 按 `provider` 分发，内置走服务器（扣积分），自定义走客户端直连（不扣积分），复用统一的轮询/下载逻辑。
+- **双模式统一入口**：`videoService.generate()` 按 `provider` 分发，内置走服务器（1.0 免费 / 2.0 扣积分），自定义走客户端直连（不扣积分），复用统一的轮询/下载逻辑。
 - **安全隔离**：`contextIsolation: true` + `nodeIntegration: false`，渲染进程仅通过 `preload` 暴露的 `window.api` 访问能力；方舟 Key 分两处保管（服务器 / 用户本地），互不泄露。
-- **积分事务性**：内置模式采用「预扣 → 失败退还」机制，建任务失败、轮询失败均退还，保证积分与实际生成结果一致。
+- **积分事务性**：内置 2.0 模式采用「预扣 → 失败退还」机制，建任务失败、轮询失败均退还，保证积分与实际生成结果一致；1.0 免费模型 `pointsCost=0`，全程不涉及积分。
 - **免感知后端**：方舟 Key、数据库连接信息只在 `server/config.js`，客户端只存 `serverUrl` + `authToken`，迁移服务器只需改配置 + 登录界面改地址。
 - **流式统一模式**：视频生成采用「`generate` 触发 + `onProgress`/`onSuccess`/`onError` 事件回调 + `cancel` 中止」三段式，渲染进程通过 `bridge` 订阅事件。
 - **容错降级**：配置目录逐级回退保证可写；`bridge.js` 在非 Electron 环境提供 mock，避免纯浏览器调试报错。

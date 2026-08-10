@@ -174,7 +174,7 @@ export default function RechargeModal({ open, onClose }) {
               {/* 说明 */}
               <div className="recharge-tips">
                 <p>· 模拟支付：点击立即支付后积分立即到账，无需真实付款。</p>
-                <p>· 积分用于内置 Seedance 视频生成，自定义 AI 不消耗积分。</p>
+                <p>· 积分用于内置模型视频生成，自定义模型不消耗积分。</p>
               </div>
             </>
           )}

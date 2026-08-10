@@ -4,14 +4,14 @@
  * 封装与后端服务器的所有通信：
  *   - 认证（注册 / 登录 / 登出 / 状态恢复）
  *   - 用户资料 / 头像 / 积分
- *   - 内置 Seedance 视频生成（创建任务 / 查询任务 / 历史）
+ *   - 内置模型视频生成（创建任务 / 查询任务 / 历史）
  *   - 充值（套餐 / 创建订单 / 模拟支付 / 历史）
  *
  * 自动从 configStore 读取 serverUrl 与 authToken，
  * 注入 Authorization: Bearer <token>。
  *
- * 内置 Seedance 视频生成由服务器调用方舟 API 并扣减用户积分；
- * 自定义视频生成 AI 由客户端 videoService 直接调用，不经过此模块。
+ * 内置模型视频生成由服务器调用方舟 API 并扣减用户积分；
+ * 自定义模型由客户端 videoService 直接调用，不经过此模块。
  */
 const { loadConfig, updateConfig } = require('./configStore');
 
@@ -116,7 +116,7 @@ const updateProfile = (data) => request('PUT', '/api/user/profile', data);
 const getPoints = () => request('GET', '/api/user/points');
 const addPoints = (delta) => request('POST', '/api/user/points', { delta });
 
-// ==================== 内置 Seedance 视频生成 ====================
+// ==================== 内置模型视频生成 ====================
 
 /**
  * 创建视频生成任务（服务器调用方舟，预扣积分）
@@ -137,7 +137,7 @@ const getVideoTask = (taskId) => request('GET', `/api/video/tasks/${taskId}`);
 const getVideoHistory = () => request('GET', '/api/video/history');
 
 /**
- * 拉取后台维护的内置 Seedance 模型列表
+ * 拉取后台维护的内置模型列表
  * @returns {object} { models: [{ id, name, desc }] }
  */
 const getVideoModels = () => request('GET', '/api/video/models');
@@ -182,7 +182,7 @@ module.exports = {
   updateProfile,
   getPoints,
   addPoints,
-  // 内置 Seedance 视频
+  // 内置模型视频
   createVideoTask,
   getVideoTask,
   getVideoHistory,

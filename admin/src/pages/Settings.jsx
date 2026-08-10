@@ -218,7 +218,7 @@ export default function SettingsPage() {
           <Alert
             type="info"
             showIcon
-            message="此 Key 用于内置 Seedance 视频生成，由服务器调用方舟 API"
+            message="此 Key 用于内置模型视频生成，由服务器调用方舟 API"
             style={{ marginBottom: 16 }}
           />
           <Form layout="vertical" style={{ maxWidth: 560 }}>

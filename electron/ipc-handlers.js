@@ -5,10 +5,10 @@
  * 此模块把每个 IPC 通道路由到对应服务。
  *
  * 仅保留视频生成相关能力：
- *   - 应用配置（视频参数 / 自定义 AI 配置 / 服务器地址 / 登录态）
+ *   - 应用配置（视频参数 / 自定义模型配置 / 服务器地址 / 登录态）
  *   - 后端服务器通信（认证 / 用户 / 积分 / 视频历史）
  *   - 充值（套餐 / 创建订单 / 模拟支付 / 历史）
- *   - 视频生成（内置 Seedance + 自定义 AI）
+ *   - 视频生成（内置模型 + 自定义模型）
  */
 const { ipcMain, dialog, shell } = require('electron');
 const { loadConfig, updateConfig, getVideoOutputDir } = require('./configStore');
@@ -95,10 +95,10 @@ function registerIpcHandlers() {
     return true;
   });
 
-  // 历史任务（来自服务器，仅内置 Seedance 模式有记录）
+  // 历史任务（来自服务器，仅内置模型模式有记录）
   ipcMain.handle('video:history', () => serverClient.getVideoHistory());
 
-  // 拉取后台维护的内置 Seedance 模型列表
+  // 拉取后台维护的内置模型列表
   ipcMain.handle('video:get-models', () => serverClient.getVideoModels());
 
   // 生成视频
@@ -127,10 +127,7 @@ function registerIpcHandlers() {
     return true;
   });
 
-  // 测试 ComfyUI 连通性（设置页「测试连接」按钮调用）
-  ipcMain.handle('video:test-comfyui', (_e, baseURL) => videoService.testComfyuiConnection(baseURL));
-
-  // 测试自定义视频生成 AI 连通性（设置页「测试连通性」按钮调用）
+  // 测试自定义模型连通性（设置页「测试连通性」按钮调用）
   ipcMain.handle('video:test-custom', (_e, baseURL, apiKey, modelId) =>
     videoService.testCustomConnection(baseURL, apiKey, modelId)
   );

@@ -156,12 +156,18 @@ async function initDb() {
   const settingCount = await db.get('SELECT COUNT(*) AS c FROM settings');
   if (settingCount.c === 0) {
     const initSettings = [
-      { key: 'ark', value: JSON.stringify(config.ark), description: '火山方舟 API 配置（内置 Seedance）' },
+      { key: 'ark', value: JSON.stringify(config.ark), description: '火山方舟 API 配置（内置模型）' },
       { key: 'videoPoints', value: JSON.stringify(config.videoPoints), description: '视频生成积分规则' },
       { key: 'rechargePlans', value: JSON.stringify(config.rechargePlans), description: '充值套餐列表' },
       { key: 'seedanceModels', value: JSON.stringify([
-        { id: 'doubao-seedance-2-0-pro', name: 'Seedance 2.0 Pro', desc: '更高质量' },
-        { id: 'doubao-seedance-2-0-fast', name: 'Seedance 2.0 Fast', desc: '更快速度' },
+        // Seedance 1.x（免费，无需 API Key）
+        { id: 'seedance-1-0-pro-t2v', name: 'Seedance 1.0 Pro 文生视频', desc: '1.0 Pro 文生视频（免费）' },
+        { id: 'seedance-1-0-lite-t2v', name: 'Seedance 1.0 Lite 文生视频', desc: '1.0 Lite 文生视频（免费）' },
+        { id: 'seedance-1-0-pro-i2v', name: 'Seedance 1.0 Pro 图生视频', desc: '1.0 Pro 图生视频（免费）' },
+        { id: 'seedance-1-0-lite-i2v', name: 'Seedance 1.0 Lite 图生视频', desc: '1.0 Lite 图生视频（免费）' },
+        // Seedance 2.0（消耗积分，需 API Key）
+        { id: 'doubao-seedance-2-0-pro', name: 'Seedance 2.0 Pro', desc: '更高质量（消耗积分）' },
+        { id: 'doubao-seedance-2-0-fast', name: 'Seedance 2.0 Fast', desc: '更快速度（消耗积分）' },
       ]), description: '内置可选 Seedance 模型列表' },
     ];
     for (const s of initSettings) {
@@ -186,6 +192,8 @@ async function initDb() {
     }
   }
 
+  await upgradeSeedanceModels();
+
   console.log(`[db] 数据库就绪（驱动: ${db.dialect}）`);
 }
 
@@ -197,27 +205,28 @@ const SEEDANCE_1_0_MODELS = [
   { id: 'seedance-1-0-pro-t2v', name: 'Seedance 1.0 Pro 文生视频', desc: '1.0 Pro 文生视频' },
   { id: 'seedance-1-0-pro-i2v', name: 'Seedance 1.0 Pro 图生视频', desc: '1.0 Pro 图生视频' },
   { id: 'seedance-1-0-lite-t2v', name: 'Seedance 1.0 Lite 文生视频', desc: '1.0 Lite 文生视频' },
-  { id: 'seedance-1-0-lite-i2v', name: 'Seedance 1.0 Lite 图生视频', desc: '1.0 Lite 图生视频' },
+  { id: 'seedance-1-0-lite-i2v', name: 'Seedance 1.0 Lite 图生视频', desc: '1.0 Lite 文生视频' },
 ];
-const modelsRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('seedanceModels');
-if (modelsRow) {
+
+async function upgradeSeedanceModels() {
+  const modelsRow = await db.get('SELECT value FROM settings WHERE key = ?', 'seedanceModels');
+  if (!modelsRow) return;
+
   try {
     const models = JSON.parse(modelsRow.value);
-    if (Array.isArray(models)) {
-      let changed = false;
-      for (const m of SEEDANCE_1_0_MODELS) {
-        if (!models.find((x) => x.id === m.id)) {
-          models.push(m);
-          changed = true;
-        }
+    if (!Array.isArray(models)) return;
+
+    let changed = false;
+    for (const m of SEEDANCE_1_0_MODELS) {
+      if (!models.find((x) => x.id === m.id)) {
+        models.push(m);
+        changed = true;
       }
-      if (changed) {
-        db.prepare(`
-          INSERT INTO settings (key, value, updated_at) VALUES (?, ?, strftime('%s','now') * 1000)
-          ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
-        `).run('seedanceModels', JSON.stringify(models));
-        console.log('[db] 已补入 Seedance 1.0 系列模型');
-      }
+    }
+
+    if (changed) {
+      await db.run(upsertSettingsSql(), 'seedanceModels', JSON.stringify(models), Date.now());
+      console.log('[db] 已补入 Seedance 1.0 系列模型');
     }
   } catch (err) {
     console.error('[db] 补入 Seedance 1.0 模型失败:', err);

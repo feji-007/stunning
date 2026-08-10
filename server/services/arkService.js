@@ -1,7 +1,7 @@
 /**
  * 火山引擎方舟（Ark）视频生成服务
  *
- * 供服务器端「内置 Seedance 视频生成」使用。
+ * 供服务器端「内置模型视频生成」使用。
  * 由服务器持有方舟 API Key，调用 Seedance 2.0 系列模型生成视频；
  * 调用产生的积分消耗由 routes/video.js 在任务维度上扣减。
  *
@@ -31,7 +31,7 @@ function getArkConfig() {
 async function arkFetch(pathname, options = {}) {
   const ark = getArkConfig();
   if (!ark.apiKey) {
-    throw new Error('服务器未配置方舟 API Key，无法使用内置 Seedance 视频生成（请在后台管理配置）');
+    throw new Error('服务器未配置方舟 API Key，无法使用内置模型视频生成（请在后台管理配置）');
   }
 
   const baseUrl = (ark.baseURL || '').replace(/\/+$/, '');
