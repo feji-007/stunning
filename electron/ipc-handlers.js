@@ -43,6 +43,7 @@ function registerIpcHandlers() {
   ipcMain.handle('server:update-profile', (_e, data) => serverClient.updateProfile(data));
   ipcMain.handle('server:get-points', () => serverClient.getPoints());
   ipcMain.handle('server:get-settings', () => serverClient.getUserSettings());
+  ipcMain.handle('server:submit-feedback', (_e, payload) => serverClient.submitFeedback(payload));
 
   // ============================================================
   // 充值（模拟支付）

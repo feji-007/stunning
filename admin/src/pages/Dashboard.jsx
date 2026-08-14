@@ -1,20 +1,24 @@
 // 仪表盘页面：展示用户数、视频任务、充值等系统概览统计
 import { useEffect, useState } from 'react';
-import { Row, Col, Card, Statistic, Spin, Descriptions, message } from 'antd';
+import { Row, Col, Card, Statistic, Spin, Descriptions, message, Alert, Button } from 'antd';
 import {
   UserOutlined,
   VideoCameraOutlined,
   TransactionOutlined,
   DollarOutlined,
   ThunderboltOutlined,
+  MessageOutlined,
 } from '@ant-design/icons';
-import { usersApi, videoApi, rechargeApi } from '../api';
+import { useNavigate } from 'react-router-dom';
+import { usersApi, videoApi, rechargeApi, feedbackApi } from '../api';
 
 export default function DashboardPage() {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [userTotal, setUserTotal] = useState(0);
   const [videoStats, setVideoStats] = useState(null);
   const [rechargeStats, setRechargeStats] = useState(null);
+  const [unreadFeedback, setUnreadFeedback] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -22,15 +26,17 @@ export default function DashboardPage() {
       setLoading(true);
       try {
         // 并行加载所有统计数据
-        const [usersRes, videoRes, rechargeRes] = await Promise.all([
+        const [usersRes, videoRes, rechargeRes, feedbackRes] = await Promise.all([
           usersApi.list({ page: 1, pageSize: 1 }),
           videoApi.stats(),
           rechargeApi.stats(),
+          feedbackApi.unreadCount().catch(() => ({ count: 0 })),
         ]);
         if (cancelled) return;
         setUserTotal(usersRes.total || 0);
         setVideoStats(videoRes || null);
         setRechargeStats(rechargeRes || null);
+        setUnreadFeedback(feedbackRes?.count || 0);
       } catch (err) {
         if (!cancelled) message.error(err.message || '加载统计数据失败');
       } finally {
@@ -56,6 +62,23 @@ export default function DashboardPage() {
 
   return (
     <div>
+      {/* 未读反馈提醒（仅当有未读时显示） */}
+      {unreadFeedback > 0 && (
+        <Alert
+          style={{ marginBottom: 16 }}
+          type="warning"
+          showIcon
+          icon={<MessageOutlined />}
+          message={`您有 ${unreadFeedback} 条未读的用户意见反馈`}
+          description="点击右侧按钮前往处理。处理完成后此提醒将自动消失。"
+          action={
+            <Button size="small" type="primary" onClick={() => navigate('/feedback')}>
+              前往查看
+            </Button>
+          }
+        />
+      )}
+
       {/* 顶部概览统计卡片 */}
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} md={8} lg={6} xl={5}>

@@ -7,6 +7,7 @@
  *   /recharge  充值套餐 / 订单管理
  *   /settings  系统配置管理
  *   /video     视频任务管理
+ *   /feedback  用户意见反馈管理
  */
 const express = require('express');
 const router = express.Router();
@@ -16,5 +17,6 @@ router.use('/users', require('./users'));
 router.use('/recharge', require('./recharge'));
 router.use('/settings', require('./settings'));
 router.use('/video', require('./video'));
+router.use('/feedback', require('./feedback'));
 
 module.exports = router;

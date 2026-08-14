@@ -103,12 +103,26 @@ function buildSchema() {
       description TEXT,
       updated_at  INTEGER NOT NULL DEFAULT (${NOW})
     )`,
+
+    `CREATE TABLE IF NOT EXISTS feedback (
+      id            ${PK},
+      user_id       INTEGER NOT NULL,
+      category      TEXT    NOT NULL DEFAULT 'other',
+      content       TEXT    NOT NULL,
+      contact       TEXT    NOT NULL DEFAULT '',
+      is_read       INTEGER NOT NULL DEFAULT 0,
+      created_at    INTEGER NOT NULL DEFAULT (${NOW}),
+      updated_at    INTEGER NOT NULL DEFAULT (${NOW}),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`,
   ];
 
   // 索引：SQLite 支持 IF NOT EXISTS，MySQL 不支持（用 try/catch 忽略重复）
   const indexes = [
     'CREATE INDEX IF NOT EXISTS idx_video_tasks_user ON video_tasks(user_id, created_at)',
     'CREATE INDEX IF NOT EXISTS idx_recharge_orders_user ON recharge_orders(user_id, created_at)',
+    'CREATE INDEX IF NOT EXISTS idx_feedback_created ON feedback(created_at DESC)',
+    'CREATE INDEX IF NOT EXISTS idx_feedback_is_read ON feedback(is_read)',
   ];
 
   return { tables, indexes };

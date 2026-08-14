@@ -121,6 +121,13 @@ const addPoints = (delta) => request('POST', '/api/user/points', { delta });
  */
 const getUserSettings = () => request('GET', '/api/user/settings');
 
+/**
+ * 提交意见反馈
+ * @param {object} payload - { category, content, contact }
+ * @returns {object} { id, ok }
+ */
+const submitFeedback = (payload) => request('POST', '/api/user/feedback', payload);
+
 // ==================== 内置模型视频生成 ====================
 
 /**
@@ -188,6 +195,7 @@ module.exports = {
   getPoints,
   addPoints,
   getUserSettings,
+  submitFeedback,
   // 内置模型视频
   createVideoTask,
   getVideoTask,

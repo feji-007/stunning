@@ -57,6 +57,7 @@ const mockServerApi = {
   updateProfile: async () => { throw new Error('非 Electron 环境'); },
   getPoints: async () => ({ points: 0 }),
   getSettings: async () => ({ videoParams: null }),
+  submitFeedback: async () => { throw new Error('非 Electron 环境'); },
 };
 
 const mockRechargeApi = {
@@ -127,6 +128,7 @@ export const bridge = {
     updateProfile: (data) => wrap(resolve('server', 'updateProfile')(data), 'server.updateProfile'),
     getPoints: () => wrap(resolve('server', 'getPoints')(), 'server.getPoints'),
     getSettings: () => wrap(resolve('server', 'getSettings')(), 'server.getSettings'),
+    submitFeedback: (payload) => wrap(resolve('server', 'submitFeedback')(payload), 'server.submitFeedback'),
   },
 
   // ===== 充值（模拟支付）=====

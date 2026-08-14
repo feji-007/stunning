@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld('api', {
     updateProfile: (data) => ipcRenderer.invoke('server:update-profile', data),
     getPoints: () => ipcRenderer.invoke('server:get-points'),
     getSettings: () => ipcRenderer.invoke('server:get-settings'),
+    submitFeedback: (payload) => ipcRenderer.invoke('server:submit-feedback', payload),
   },
 
   // ============================================================

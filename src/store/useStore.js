@@ -148,6 +148,11 @@ export const useStore = create((set, get) => ({
     return profile;
   },
 
+  // 提交意见反馈
+  submitFeedback: async (payload) => {
+    return await bridge.server.submitFeedback(payload);
+  },
+
   // ============================================================
   // 充值（模拟支付）
   // ============================================================

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store/useStore';
 import { bridge } from '../ipc/bridge';
 import {
@@ -112,6 +112,57 @@ export default function VideoStudio() {
 
   // 当前在预览区播放的历史记录 id（null 时默认播放最新一条）
   const [selectedHistoryId, setSelectedHistoryId] = useState(null);
+
+  // 左右分栏拖拽：左侧宽度占比（0.2 ~ 0.8），从 localStorage 读取上次值
+  const LAYOUT_STORAGE_KEY = 'videoStudio.leftRatio';
+  const [leftRatio, setLeftRatio] = useState(() => {
+    const saved = parseFloat(localStorage.getItem(LAYOUT_STORAGE_KEY));
+    return Number.isFinite(saved) && saved >= 0.2 && saved <= 0.8 ? saved : 0.5;
+  });
+  const leftRatioRef = useRef(leftRatio);
+  const layoutRef = useRef(null);
+  const draggingRef = useRef(false);
+
+  // 挂载时绑定一次 mousemove / mouseup，通过 draggingRef 控制是否响应，
+  // 避免在 mousedown 中反复增删监听导致引用不一致与卸载残留。
+  useEffect(() => {
+    const onMouseMove = (e) => {
+      if (!draggingRef.current || !layoutRef.current) return;
+      const rect = layoutRef.current.getBoundingClientRect();
+      const RESIZER_WIDTH = 24;
+      const usable = rect.width - RESIZER_WIDTH;
+      if (usable <= 0) return;
+      // 扣除分割条自身宽度，使鼠标贴住分割条中线
+      let ratio = (e.clientX - rect.left - RESIZER_WIDTH / 2) / usable;
+      // 限制范围 20% ~ 80%
+      ratio = Math.min(0.8, Math.max(0.2, ratio));
+      leftRatioRef.current = ratio;
+      setLeftRatio(ratio);
+    };
+    const onMouseUp = () => {
+      if (!draggingRef.current) return;
+      draggingRef.current = false;
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+      localStorage.setItem(LAYOUT_STORAGE_KEY, String(leftRatioRef.current));
+    };
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+    };
+  }, []);
+
+  // 开始拖拽：标记拖拽中，给 body 加禁用选择 + 列调整光标
+  const handleResizerMouseDown = (e) => {
+    e.preventDefault();
+    draggingRef.current = true;
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'col-resize';
+  };
 
   // 实际使用的时长/分辨率/比例：优先用服务器配置，缺失则用 FALLBACK 兜底
   const DURATIONS = (videoParams.durations && videoParams.durations.length)
@@ -390,7 +441,11 @@ export default function VideoStudio() {
         </div>
       )}
 
-      <div className="video-layout">
+      <div
+        className="video-layout"
+        ref={layoutRef}
+        style={{ gridTemplateColumns: `${leftRatio}fr 24px ${1 - leftRatio}fr` }}
+      >
         {/* ===== 左侧：参数与生成 ===== */}
         <div className="video-form">
           {/* 模式切换：文生 / 图生 */}
@@ -655,6 +710,15 @@ export default function VideoStudio() {
               <span>{videoGenError}</span>
             </div>
           )}
+        </div>
+
+        {/* ===== 分割条：拖动调整左右两栏宽度 ===== */}
+        <div
+          className="video-resizer"
+          onMouseDown={handleResizerMouseDown}
+          title="拖动调整左右宽度"
+        >
+          <div className="video-resizer-handle" />
         </div>
 
         {/* ===== 右侧：结果预览 + 历史 ===== */}

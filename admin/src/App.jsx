@@ -1,27 +1,30 @@
 import { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import { Layout, Menu, Dropdown, Button, message, Spin } from 'antd';
+import { Layout, Menu, Dropdown, Button, message, Spin, Badge } from 'antd';
 import {
   DashboardOutlined, UserOutlined, GiftOutlined, SettingOutlined,
-  VideoCameraOutlined, LogoutOutlined, DownOutlined, LockOutlined,
+  VideoCameraOutlined, LogoutOutlined, DownOutlined, LockOutlined, MessageOutlined,
 } from '@ant-design/icons';
-import { authApi, getToken, setToken } from './api';
+import { authApi, getToken, setToken, feedbackApi } from './api';
 import LoginPage from './pages/Login.jsx';
 import DashboardPage from './pages/Dashboard.jsx';
 import UsersPage from './pages/Users.jsx';
 import RechargePage from './pages/Recharge.jsx';
 import OrdersPage from './pages/Orders.jsx';
 import VideoTasksPage from './pages/VideoTasks.jsx';
+import FeedbackPage from './pages/Feedback.jsx';
 import SettingsPage from './pages/Settings.jsx';
 
 const { Header, Sider, Content } = Layout;
 
+/** 静态菜单定义；反馈项的 label 在 AdminLayout 内动态注入未读徽标 */
 const menuItems = [
   { key: '/dashboard', icon: <DashboardOutlined />, label: '仪表盘' },
   { key: '/users', icon: <UserOutlined />, label: '用户管理' },
   { key: '/recharge', icon: <GiftOutlined />, label: '充值套餐' },
   { key: '/orders', icon: <GiftOutlined />, label: '订单记录' },
   { key: '/video-tasks', icon: <VideoCameraOutlined />, label: '视频任务' },
+  { key: '/feedback', icon: <MessageOutlined />, label: '用户意见' },
   { key: '/settings', icon: <SettingOutlined />, label: '系统配置' },
 ];
 
@@ -36,6 +39,7 @@ function AdminLayout({ children }) {
   const navigate = useNavigate();
   const [admin, setAdmin] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [unreadFeedback, setUnreadFeedback] = useState(0);
 
   const loadAdmin = useCallback(async () => {
     try {
@@ -50,6 +54,27 @@ function AdminLayout({ children }) {
   }, [navigate]);
 
   useEffect(() => { loadAdmin(); }, [loadAdmin]);
+
+  // 拉取未读反馈数量，并在反馈页停留期间每 30 秒刷新一次
+  const loadUnreadFeedback = useCallback(async () => {
+    try {
+      const data = await feedbackApi.unreadCount();
+      setUnreadFeedback(data?.count || 0);
+    } catch {
+      // 静默失败，不打扰用户
+    }
+  }, []);
+
+  useEffect(() => {
+    loadUnreadFeedback();
+    const timer = setInterval(loadUnreadFeedback, 30000);
+    return () => clearInterval(timer);
+  }, [loadUnreadFeedback]);
+
+  // 路由切换时刷新未读数（进入/离开反馈页时及时同步）
+  useEffect(() => {
+    loadUnreadFeedback();
+  }, [window.location.pathname, loadUnreadFeedback]);
 
   const handleLogout = () => {
     setToken('');
@@ -94,6 +119,21 @@ function AdminLayout({ children }) {
     ],
   };
 
+  // 给「用户意见」菜单项加上未读徽标
+  const itemsWithBadge = menuItems.map((item) => {
+    if (item.key === '/feedback' && unreadFeedback > 0) {
+      return {
+        ...item,
+        label: (
+          <Badge count={unreadFeedback} overflowCount={99} offset={[10, 0]} size="small">
+            <span>{item.label}</span>
+          </Badge>
+        ),
+      };
+    }
+    return item;
+  });
+
   return (
     <Layout style={{ minHeight: '100vh' }}>
       <Sider theme="dark" width={220}>
@@ -104,7 +144,7 @@ function AdminLayout({ children }) {
           theme="dark"
           mode="inline"
           defaultSelectedKeys={[window.location.pathname]}
-          items={menuItems}
+          items={itemsWithBadge}
           onClick={({ key }) => navigate(key)}
         />
       </Sider>
@@ -134,6 +174,7 @@ export default function App() {
         <Route path="/recharge" element={<ProtectedRoute><AdminLayout><RechargePage /></AdminLayout></ProtectedRoute>} />
         <Route path="/orders" element={<ProtectedRoute><AdminLayout><OrdersPage /></AdminLayout></ProtectedRoute>} />
         <Route path="/video-tasks" element={<ProtectedRoute><AdminLayout><VideoTasksPage /></AdminLayout></ProtectedRoute>} />
+        <Route path="/feedback" element={<ProtectedRoute><AdminLayout><FeedbackPage /></AdminLayout></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute><AdminLayout><SettingsPage /></AdminLayout></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

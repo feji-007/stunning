@@ -154,11 +154,42 @@ body {
 /* ===== 侧边栏 ===== */
 .sidebar {
   width: 260px;
+  min-width: 0;
   background: var(--bg-sidebar);
-  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+}
+/* 侧边栏与主面板之间的拖拽分割条 */
+.sidebar-resizer {
+  width: 8px;
+  position: relative;
+  flex-shrink: 0;
+  cursor: col-resize;
+  user-select: none;
+  align-self: stretch;
+  background: transparent;
+  transition: background 0.15s;
+}
+.sidebar-resizer-handle {
+  position: absolute;
+  left: 50%;
+  top: 20%;
+  bottom: 20%;
+  transform: translateX(-50%);
+  width: 2px;
+  border-radius: 2px;
+  background: var(--border);
+  transition: background 0.15s, width 0.15s;
+}
+.sidebar-resizer:hover,
+.sidebar-resizer:active {
+  background: rgba(139, 92, 246, 0.05);
+}
+.sidebar-resizer:hover .sidebar-resizer-handle,
+.sidebar-resizer:active .sidebar-resizer-handle {
+  background: var(--accent);
+  width: 4px;
 }
 
 .sidebar-brand {
@@ -573,10 +604,24 @@ body {
 .panel {
   height: 100%;
   overflow-y: auto;
-  padding: 32px 40px;
-  max-width: 900px;
-  margin: 0 auto;
+  /* 右 padding 缩小，让滚动条贴到最右；内容通过内盒子保证不贴边 */
+  padding: 16px 20px 16px 20px;
   width: 100%;
+  box-sizing: border-box;
+  /* 让 panel 自身作为滚动容器，scrollbar 紧贴面板右边界（而不是被外层 padding 推离） */
+  overflow-x: hidden;
+}
+/* 滚动条贴紧 panel 右边缘：web-kit 滚动条绘制在元素 border-box 上，
+   已由 overflow-y: auto 触发于 .panel，此处把 scrollbar-thumb 视觉上的左右余量收紧 */
+.panel::-webkit-scrollbar {
+  width: 8px;
+}
+.panel::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 0;
+}
+.panel::-webkit-scrollbar-thumb {
+  border-radius: 4px;
 }
 .panel-header {
   display: flex;
@@ -1097,12 +1142,39 @@ body {
 
 .video-layout {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 24px;
+  grid-template-columns: 1fr 1fr; /* 默认两列；运行时被 inline style 覆盖为「左 fr + 分割条 + 右 fr」三列 */
+  gap: 0;
   align-items: start;
 }
 @media (max-width: 1100px) {
-  .video-layout { grid-template-columns: 1fr; }
+  .video-layout { grid-template-columns: 1fr !important; }
+  .video-resizer { display: none !important; }
+}
+
+/* 左右分栏拖拽分割条 */
+.video-resizer {
+  width: 24px;
+  position: relative;
+  align-self: stretch;
+  cursor: col-resize;
+  user-select: none;
+  flex-shrink: 0;
+}
+.video-resizer-handle {
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  bottom: 12px;
+  transform: translateX(-50%);
+  width: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  transition: background 0.15s, width 0.15s;
+}
+.video-resizer:hover .video-resizer-handle,
+.video-resizer:active .video-resizer-handle {
+  background: var(--primary);
+  width: 6px;
 }
 
 /* 左侧表单 */
@@ -2500,4 +2572,70 @@ body {
 }
 .recharge-success-balance strong { color: var(--warning); font-weight: 700; }
 .recharge-success-btn { min-width: 140px; justify-content: center; }
+
+/* ============================================================
+ * 意见反馈弹窗（FeedbackModal）
+ * ============================================================ */
+.feedback-modal {
+  width: 520px;
+  max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 64px);
+  display: flex;
+  flex-direction: column;
+}
+.feedback-categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.feedback-category-chip {
+  padding: 6px 14px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.feedback-category-chip:hover {
+  border-color: var(--border-light);
+  color: var(--text-primary);
+}
+.feedback-category-chip--active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.feedback-category-chip--active:hover {
+  color: #fff;
+}
+.feedback-counter {
+  float: right;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+.feedback-success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 16px 8px;
+  text-align: center;
+}
+.feedback-success-icon {
+  color: var(--success);
+  margin-bottom: 12px;
+}
+.feedback-success-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+.feedback-success-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 20px;
+}
 

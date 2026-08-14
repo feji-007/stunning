@@ -75,4 +75,26 @@ router.get('/settings', authRequired, async (_req, res) => {
   res.json({ videoParams });
 });
 
+// 提交意见反馈
+//   { category?, content, contact? }
+router.post('/feedback', authRequired, async (req, res) => {
+  const { category, content, contact } = req.body || {};
+  const text = typeof content === 'string' ? content.trim() : '';
+  if (!text) {
+    return res.status(400).json({ error: '反馈内容不能为空' });
+  }
+  if (text.length > 2000) {
+    return res.status(400).json({ error: '反馈内容过长（最多 2000 字）' });
+  }
+  const allowed = ['bug', 'feature', 'experience', 'other'];
+  const cat = allowed.includes(category) ? category : 'other';
+  const contactStr = typeof contact === 'string' ? contact.trim().slice(0, 100) : '';
+
+  const info = await db.run(
+    'INSERT INTO feedback (user_id, category, content, contact) VALUES (?, ?, ?, ?)',
+    req.user.id, cat, text, contactStr
+  );
+  res.json({ id: info.lastInsertRowid, ok: true });
+});
+
 module.exports = router;
