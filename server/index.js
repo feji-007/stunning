@@ -11,6 +11,9 @@
  */
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
+const os = require('os');
+const fs = require('fs');
 const config = require('./config');
 const { initDb } = require('./db');
 const settings = require('./settings');
@@ -30,6 +33,13 @@ async function main() {
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true, service: 'stunning-server', time: Date.now() });
   });
+
+  // 临时：测试视频静态文件服务（用于模拟视频生成成功后的下载源）
+  const testVideoDir = path.join(os.homedir(), 'Videos', 'stunning');
+  if (fs.existsSync(testVideoDir)) {
+    app.use('/test-video', express.static(testVideoDir));
+    console.log(`[stunning-server] 测试视频文件服务: /test-video -> ${testVideoDir}`);
+  }
 
   // 路由挂载
   app.use('/api/auth', require('./routes/auth'));
@@ -54,9 +64,11 @@ async function main() {
     console.log(`[stunning-server] 已启动: http://localhost:${config.port}`);
     console.log(`[stunning-server] 数据库驱动: ${driver}`);
     console.log(`[stunning-server] 数据库: ${dbInfo}`);
-    console.log(`[stunning-server] 内置模型: ${config.ark.baseURL} (模型 ${config.ark.defaultModel})`);
-    if (!config.ark.apiKey) {
-      console.warn('[stunning-server] ⚠️  未配置 ARK_API_KEY，内置模型视频生成将不可用');
+    // 内置模型部署在本地服务器，由后台管理界面维护（localModelService）
+    const localService = settings.get('localModelService') || {};
+    console.log(`[stunning-server] 本地模型服务: ${localService.enabled ? localService.baseURL || '(未配置地址)' : '未启用'}`);
+    if (!localService.enabled) {
+      console.warn('[stunning-server] ⚠️  本地模型服务未启用，内置模型视频生成将不可用（请在后台管理中启用）');
     }
   });
 }

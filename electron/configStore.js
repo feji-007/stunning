@@ -170,4 +170,4 @@ function getVideoOutputDir() {
   return tmp;
 }
 
-module.exports = { loadConfig, saveConfig, updateConfig, getVideoOutputDir, CONFIG_FILE };
+module.exports = { loadConfig, saveConfig, updateConfig, getVideoOutputDir, CONFIG_FILE, CONFIG_DIR };

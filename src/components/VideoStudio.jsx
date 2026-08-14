@@ -1,33 +1,44 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../store/useStore';
+import { bridge } from '../ipc/bridge';
 import {
   Film, Play, Square, Image as ImageIcon, Sparkles,
   Loader2, FolderOpen, Clock, AlertCircle, CheckCircle2, Wand2, Coins,
 } from 'lucide-react';
 
-const DURATIONS = [5, 10];
-const RESOLUTIONS = ['720p', '1080p'];
-const RATIOS = [
-  { value: '16:9', label: '横屏 16:9' },
-  { value: '9:16', label: '竖屏 9:16' },
-  { value: '1:1', label: '方形 1:1' },
-  { value: '4:3', label: '横屏 4:3' },
-  { value: '3:4', label: '竖屏 3:4' },
-  { value: '21:9', label: '宽屏 21:9' },
-];
-// 内置模型默认模型列表（与服务端默认一致，作为服务器不可达时的兜底）
-// 覆盖 1.0 / 2.0 系列；1.0 区分 t2v / i2v
+// 客户端兜底参数：服务器不可达时使用；实际运行时由后台管理的 videoParams 覆盖
+const FALLBACK_VIDEO_PARAMS = {
+  durations: [5, 10],
+  resolutions: ['720p', '1080p'],
+  ratios: [
+    { value: '16:9', label: '横屏 16:9' },
+    { value: '9:16', label: '竖屏 9:16' },
+    { value: '1:1',  label: '方形 1:1' },
+    { value: '4:3',  label: '横屏 4:3' },
+    { value: '3:4',  label: '竖屏 3:4' },
+    { value: '21:9', label: '宽屏 21:9' },
+  ],
+  defaultDuration: 5,
+  defaultResolution: '720p',
+  defaultRatio: '16:9',
+  defaultWatermark: false,
+  defaultSeed: -1,
+};
+// 内置模型默认列表（与服务端默认一致，作为服务器不可达时的兜底）
+// 内置模型 = 部署在本地服务器的视频生成模型（当前为占位示例，由管理员在后台维护）
 const DEFAULT_SEEDANCE_MODELS = [
-  { id: 'seedance-1-0-lite-t2v', name: 'Seedance 1.0 Lite 文生视频', desc: '1.0 Lite（免费）文生视频' },
-  { id: 'seedance-1-0-lite-i2v', name: 'Seedance 1.0 Lite 图生视频', desc: '1.0 Lite（免费）图生视频' },
-  { id: 'seedance-1-0-pro-t2v', name: 'Seedance 1.0 Pro 文生视频', desc: '1.0 Pro（免费）文生视频' },
-  { id: 'seedance-1-0-pro-i2v', name: 'Seedance 1.0 Pro 图生视频', desc: '1.0 Pro（免费）图生视频' },
-  { id: 'doubao-seedance-2-0-pro', name: 'Seedance 2.0 Pro', desc: '更高质量（消耗积分）' },
-  { id: 'doubao-seedance-2-0-fast', name: 'Seedance 2.0 Fast', desc: '更快速度（消耗积分）' },
+  { id: 'local-video-lite-t2v', name: '本地视频模型 Lite 文生视频', desc: '本地部署 · 文生视频（占位）' },
+  { id: 'local-video-lite-i2v', name: '本地视频模型 Lite 图生视频', desc: '本地部署 · 图生视频（占位）' },
+  { id: 'local-video-pro-t2v', name: '本地视频模型 Pro 文生视频', desc: '本地部署 · 文生视频（占位）' },
+  { id: 'local-video-pro-i2v', name: '本地视频模型 Pro 图生视频', desc: '本地部署 · 图生视频（占位）' },
 ];
 
-// 自定义模型模式常用模型快捷预设（仅保留需 API Key 的 2.0 系列；1.x 系列归入内置模型免费使用）
+// 自定义模型快捷预设：所有需要 API Key 的 Seedance 系列（1.x + 2.x）均归入自定义模型
 const CUSTOM_MODEL_PRESETS = [
+  { id: 'seedance-1-0-lite-t2v', name: 'Seedance 1.0 Lite 文生' },
+  { id: 'seedance-1-0-lite-i2v', name: 'Seedance 1.0 Lite 图生' },
+  { id: 'seedance-1-0-pro-t2v', name: 'Seedance 1.0 Pro 文生' },
+  { id: 'seedance-1-0-pro-i2v', name: 'Seedance 1.0 Pro 图生' },
   { id: 'doubao-seedance-2-0-pro', name: 'Seedance 2.0 Pro' },
   { id: 'doubao-seedance-2-0-fast', name: 'Seedance 2.0 Fast' },
 ];
@@ -40,12 +51,25 @@ function isT2VOnly(modelId) {
 function isI2VOnly(modelId) {
   return typeof modelId === 'string' && /-i2v$/i.test(modelId);
 }
-// 判断是否属于 Seedance 1.x 免费系列（不扣积分）
-function isSeedance1xFree(modelId) {
-  return typeof modelId === 'string' && /^seedance-1-0-/i.test(modelId);
+
+/**
+ * 将本地文件路径转换为可在 <video> src 中使用的 URL
+ * 优先使用 Electron 自定义协议 local-video://（更稳定，绕过 file:// 的 CSP 限制）
+ * - Windows: C:\Users\x\a.mp4 -> local-video:///C:/Users/x/a.mp4
+ * - Unix: /home/x/a.mp4 -> local-video:///home/x/a.mp4
+ * 兜底：file:// 协议（非 Electron 环境下）
+ */
+function localPathToFileUrl(localPath) {
+  if (!localPath) return '';
+  // 统一反斜杠为正斜杠
+  const normalized = localPath.replace(/\\/g, '/');
+  // Windows 绝对路径（形如 C:/...）前面已自带斜杠结构，直接追加即可
+  // 我们使用 local-video:///<path> 形式（三斜杠后接完整路径）
+  return `local-video:///${normalized}`;
 }
 
 // 积分预估：duration × 2 × (1080p ? 2 : 1)
+// 内置模型（本地服务器部署）统一消耗积分，无免费变体
 function calcPointsCost(duration, resolution) {
   return duration * 2 * (resolution === '1080p' ? 2 : 1);
 }
@@ -66,22 +90,39 @@ export default function VideoStudio() {
   const setActiveView = useStore((s) => s.setActiveView);
   const seedanceModels = useStore((s) => s.seedanceModels);
   const loadSeedanceModels = useStore((s) => s.loadSeedanceModels);
+  const loadVideoHistory = useStore((s) => s.loadVideoHistory);
 
   const [mode, setMode] = useState('text'); // 'text' | 'image'
   const [prompt, setPrompt] = useState('');
   const [refImage, setRefImage] = useState(null); // { path, dataUrl }
-  const [seedanceModel, setSeedanceModel] = useState('seedance-1-0-lite-t2v');
-  const [duration, setDuration] = useState(5);
-  const [resolution, setResolution] = useState('720p');
-  const [ratio, setRatio] = useState('16:9');
-  const [watermark, setWatermark] = useState(false);
-  const [seed, setSeed] = useState(-1);
+  const [seedanceModel, setSeedanceModel] = useState('local-video-lite-t2v');
+  // 视频参数：从服务器拉取（后台管理），兜底 FALLBACK_VIDEO_PARAMS
+  const [videoParams, setVideoParams] = useState(FALLBACK_VIDEO_PARAMS);
+  const [duration, setDuration] = useState(FALLBACK_VIDEO_PARAMS.defaultDuration);
+  const [resolution, setResolution] = useState(FALLBACK_VIDEO_PARAMS.defaultResolution);
+  const [ratio, setRatio] = useState(FALLBACK_VIDEO_PARAMS.defaultRatio);
+  const [watermark, setWatermark] = useState(FALLBACK_VIDEO_PARAMS.defaultWatermark);
+  const [seed, setSeed] = useState(FALLBACK_VIDEO_PARAMS.defaultSeed);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   // 自定义模型模式：模型选择（本地态，选择时持久化到配置）
   const [customModel, setCustomModel] = useState('');
   const [customInputMode, setCustomInputMode] = useState(false); // 是否显示自定义输入框
   const [customInputValue, setCustomInputValue] = useState('');
+
+  // 当前在预览区播放的历史记录 id（null 时默认播放最新一条）
+  const [selectedHistoryId, setSelectedHistoryId] = useState(null);
+
+  // 实际使用的时长/分辨率/比例：优先用服务器配置，缺失则用 FALLBACK 兜底
+  const DURATIONS = (videoParams.durations && videoParams.durations.length)
+    ? videoParams.durations
+    : FALLBACK_VIDEO_PARAMS.durations;
+  const RESOLUTIONS = (videoParams.resolutions && videoParams.resolutions.length)
+    ? videoParams.resolutions
+    : FALLBACK_VIDEO_PARAMS.resolutions;
+  const RATIOS = (videoParams.ratios && videoParams.ratios.length)
+    ? videoParams.ratios
+    : FALLBACK_VIDEO_PARAMS.ratios;
 
   // 实际使用的模型列表：优先用服务器返回的，兜底用本地默认
   const allSeedanceModels = (seedanceModels && seedanceModels.length)
@@ -98,28 +139,87 @@ export default function VideoStudio() {
     return !isI2VOnly(m.id);
   });
 
-  // 初始化配置 + 拉取模型列表
+  // 初始化配置 + 拉取模型列表 + 拉取后台管理的视频参数
   useEffect(() => {
     (async () => {
-      const config = await loadAppConfig();
-      if (config?.videoDefaults) {
-        const vd = config.videoDefaults;
-        setDuration(vd.duration ?? 5);
-        setResolution(vd.resolution ?? '720p');
-        setRatio(vd.ratio ?? '16:9');
-        setWatermark(vd.watermark ?? false);
-        setSeed(vd.seed ?? -1);
+      // 1) 先拉取后台管理的 videoParams（若可用），决定基础默认值
+      let serverParams = null;
+      try {
+        const s = await bridge.server.getSettings();
+        if (s?.videoParams) serverParams = s.videoParams;
+      } catch (err) {
+        console.warn('拉取视频参数失败，使用兜底：', err.message);
       }
+      const effectiveParams = serverParams || FALLBACK_VIDEO_PARAMS;
+      // 过滤出合法结构，避免后台保存时误填导致 UI 崩溃
+      const merged = {
+        durations: Array.isArray(effectiveParams.durations) && effectiveParams.durations.length
+          ? effectiveParams.durations
+          : FALLBACK_VIDEO_PARAMS.durations,
+        resolutions: Array.isArray(effectiveParams.resolutions) && effectiveParams.resolutions.length
+          ? effectiveParams.resolutions
+          : FALLBACK_VIDEO_PARAMS.resolutions,
+        ratios: Array.isArray(effectiveParams.ratios) && effectiveParams.ratios.length
+          ? effectiveParams.ratios
+          : FALLBACK_VIDEO_PARAMS.ratios,
+        defaultDuration: typeof effectiveParams.defaultDuration === 'number'
+          ? effectiveParams.defaultDuration
+          : FALLBACK_VIDEO_PARAMS.defaultDuration,
+        defaultResolution: typeof effectiveParams.defaultResolution === 'string'
+          ? effectiveParams.defaultResolution
+          : FALLBACK_VIDEO_PARAMS.defaultResolution,
+        defaultRatio: typeof effectiveParams.defaultRatio === 'string'
+          ? effectiveParams.defaultRatio
+          : FALLBACK_VIDEO_PARAMS.defaultRatio,
+        defaultWatermark: typeof effectiveParams.defaultWatermark === 'boolean'
+          ? effectiveParams.defaultWatermark
+          : FALLBACK_VIDEO_PARAMS.defaultWatermark,
+        defaultSeed: typeof effectiveParams.defaultSeed === 'number'
+          ? effectiveParams.defaultSeed
+          : FALLBACK_VIDEO_PARAMS.defaultSeed,
+      };
+      setVideoParams(merged);
+
+      // 2) 再读取本地保存的 videoDefaults（用户上次选择），优先于后台默认值
+      const config = await loadAppConfig();
+      const vd = config?.videoDefaults || {};
+      // 但如果本地值不在当前服务器可选范围内，则回退到服务器默认
+      const durationFallback = (() => {
+        if (typeof vd.duration === 'number' && merged.durations.includes(vd.duration)) return vd.duration;
+        return merged.durations.includes(merged.defaultDuration)
+          ? merged.defaultDuration
+          : merged.durations[0];
+      })();
+      const resolutionFallback = (() => {
+        if (typeof vd.resolution === 'string' && merged.resolutions.includes(vd.resolution)) return vd.resolution;
+        return merged.resolutions.includes(merged.defaultResolution)
+          ? merged.defaultResolution
+          : merged.resolutions[0];
+      })();
+      const ratioFallback = (() => {
+        const values = merged.ratios.map((r) => r.value);
+        if (typeof vd.ratio === 'string' && values.includes(vd.ratio)) return vd.ratio;
+        return values.includes(merged.defaultRatio)
+          ? merged.defaultRatio
+          : values[0];
+      })();
+      setDuration(durationFallback);
+      setResolution(resolutionFallback);
+      setRatio(ratioFallback);
+      setWatermark(typeof vd.watermark === 'boolean' ? vd.watermark : merged.defaultWatermark);
+      setSeed(typeof vd.seed === 'number' ? vd.seed : merged.defaultSeed);
     })();
     loadSeedanceModels();
+    // 加载本地持久化的视频历史，启动后自动展示
+    loadVideoHistory();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 模式切换时，若当前选中的模型在新模式下不可用，则回退到默认免费模型
+  // 模式切换时，若当前选中的模型在新模式下不可用，则回退到默认本地模型
   useEffect(() => {
     if (isT2VOnly(seedanceModel) && mode === 'image') {
-      setSeedanceModel('seedance-1-0-lite-i2v');
+      setSeedanceModel('local-video-lite-i2v');
     } else if (isI2VOnly(seedanceModel) && mode === 'text') {
-      setSeedanceModel('seedance-1-0-lite-t2v');
+      setSeedanceModel('local-video-lite-t2v');
     }
     // 自定义模式：若当前选中模型在新模式下不可用且非自定义输入，回退到 2.0 Pro
     if (isCustom && !customInputMode) {
@@ -143,18 +243,24 @@ export default function VideoStudio() {
 
   const provider = appConfig?.videoProvider || 'seedance';
   const isCustom = provider === 'custom';
-  const consumesPoints = provider === 'seedance' && !isSeedance1xFree(seedanceModel);
+  // 内置模型（本地服务器部署）统一消耗积分，无免费变体
+  const consumesPoints = provider === 'seedance';
   const isGenerating = ['queued', 'running', 'downloading'].includes(videoGenStatus);
 
   // 自定义模式：是否已配置 API Key
   const customReady = !!(appConfig?.customVideo?.apiKey && appConfig?.customVideo?.baseURL);
-  // 内置模式：若需要扣积分则积分足够判断；若免费模型直接允许
+  // 内置模式：积分足够判断
   const pointsCost = calcPointsCost(duration, resolution);
   const userPoints = user?.points ?? 0;
-  const pointsEnough = !consumesPoints || userPoints >= pointsCost;
+  const pointsEnough = userPoints >= pointsCost;
 
   const providerReady = isCustom ? customReady : pointsEnough;
   const canGenerate = providerReady && (!!prompt.trim() || !!refImage);
+
+  // 预览区显示的视频：优先显示用户在历史中点击选中的，否则默认最新一条
+  const previewVideo = selectedHistoryId
+    ? videoHistory.find((v) => v.id === selectedHistoryId)
+    : videoHistory[0];
 
   const handleSelectImage = async () => {
     const result = await selectReferenceImage();
@@ -208,6 +314,8 @@ export default function VideoStudio() {
       watermark,
       seed,
     });
+    // 生成完成后切回最新一条
+    setSelectedHistoryId(null);
   };
 
   const handleCancel = () => cancelVideoGeneration();
@@ -238,8 +346,8 @@ export default function VideoStudio() {
       </div>
 
       <p className="panel-desc">
-        通过文本提示词或参考图生成短视频。支持<strong>内置模型</strong>（含免费 1.0 系列 + 付费积分的 2.0 系列）、
-        <strong>自定义模型</strong>（自带 Key，方舟 API 兼容格式）。
+        通过文本提示词或参考图生成短视频。支持<strong>内置模型</strong>（部署在本地服务器，消耗积分）、
+        <strong>自定义模型</strong>（自带 API Key，如 Seedance 系列，方舟 API 兼容格式）。
       </p>
 
       {/* 提供商切换 */}
@@ -263,8 +371,8 @@ export default function VideoStudio() {
         </button>
       </div>
 
-      {/* 内置模式：积分提示 */}
-      {provider === 'seedance' && (consumesPoints ? (
+      {/* 内置模式：积分提示（内置模型统一消耗积分） */}
+      {provider === 'seedance' && (
         <div className={`video-apikey-banner ${pointsEnough ? '' : 'video-apikey-banner--warn'}`}>
           <Coins size={16} />
           <span>
@@ -272,14 +380,7 @@ export default function VideoStudio() {
             {!pointsEnough && '（积分不足，无法生成）'}
           </span>
         </div>
-      ) : (
-        <div className="video-apikey-banner">
-          <Sparkles size={16} />
-          <span>
-            当前使用 <strong>{allSeedanceModels.find((m) => m.id === seedanceModel)?.name || seedanceModel}</strong>（免费），无需消耗积分
-          </span>
-        </div>
-      ))}
+      )}
 
       {/* 自定义模式：未配置提示 */}
       {isCustom && !customReady && (
@@ -369,7 +470,7 @@ export default function VideoStudio() {
                 >
                   {availableSeedanceModels.map((m) => (
                     <option key={m.id} value={m.id} title={m.desc || m.name}>
-                      {m.name}（{isSeedance1xFree(m.id) ? '免费' : '消耗积分'}）
+                      {m.name}
                     </option>
                   ))}
                 </select>
@@ -558,36 +659,40 @@ export default function VideoStudio() {
 
         {/* ===== 右侧：结果预览 + 历史 ===== */}
         <div className="video-result">
-          {/* 最新结果 */}
-          {videoHistory[0] && (
+          {/* 预览区：显示当前选中的历史视频，默认为最新一条 */}
+          {previewVideo && (
             <div className="video-latest">
               <div className="video-latest-header">
                 <CheckCircle2 size={16} className="video-latest-icon" />
-                <span>最新生成</span>
+                <span>{selectedHistoryId ? '预览' : '最新生成'}</span>
                 <span className="video-latest-provider">
-                  {videoHistory[0].provider === 'custom' ? '自定义' : 'Seedance'}
+                  {previewVideo.provider === 'custom' ? '自定义' : '内置'}
                 </span>
               </div>
               <div className="video-player-wrapper">
                 <video
-                  src={`file://${videoHistory[0].localPath}`}
+                  key={previewVideo.id}
+                  src={localPathToFileUrl(previewVideo.localPath)}
                   controls
                   autoPlay
+                  muted
                   loop
+                  playsInline
                   className="video-player"
+                  onError={(e) => console.warn('视频预览加载失败:', previewVideo.localPath, e)}
                 />
               </div>
               <div className="video-latest-meta">
-                <p className="video-latest-prompt" title={videoHistory[0].prompt}>
-                  {videoHistory[0].prompt || '(图生视频)'}
+                <p className="video-latest-prompt" title={previewVideo.prompt}>
+                  {previewVideo.prompt || '(图生视频)'}
                 </p>
                 <div className="video-latest-tags">
-                  <span>{videoHistory[0].duration}秒</span>
-                  <span>{videoHistory[0].params.resolution}</span>
-                  <span>{videoHistory[0].params.ratio}</span>
+                  <span>{previewVideo.duration}秒</span>
+                  <span>{previewVideo.params.resolution}</span>
+                  <span>{previewVideo.params.ratio}</span>
                 </div>
                 <div className="video-latest-actions">
-                  <button className="btn btn-secondary" onClick={() => openVideoInFolder(videoHistory[0].localPath)}>
+                  <button className="btn btn-secondary" onClick={() => openVideoInFolder(previewVideo.localPath)}>
                     <FolderOpen size={14} />
                     <span>打开目录</span>
                   </button>
@@ -609,32 +714,48 @@ export default function VideoStudio() {
               </div>
             ) : (
               <div className="video-history-list">
-                {videoHistory.map((item) => (
-                  <div key={item.id} className="video-history-item">
-                    <div className="video-history-thumb">
-                      <video src={`file://${item.localPath}`} muted className="video-history-video" />
-                    </div>
-                    <div className="video-history-info">
-                      <p className="video-history-prompt">{item.prompt || '(图生视频)'}</p>
-                      <div className="video-history-tags">
-                        <span>{item.duration}秒</span>
-                        <span>{item.params.resolution}</span>
-                        <span>{item.params.ratio}</span>
-                        <span>{item.provider === 'custom' ? '自定义' : 'Seedance'}</span>
-                      </div>
-                      <span className="video-history-time">
-                        {new Date(item.createdAt).toLocaleString('zh-CN')}
-                      </span>
-                    </div>
-                    <button
-                      className="video-history-open"
-                      onClick={() => openVideoInFolder(item.localPath)}
-                      title="在文件夹中显示"
+                {videoHistory.map((item) => {
+                  const isActive = (previewVideo && previewVideo.id === item.id);
+                  return (
+                    <div
+                      key={item.id}
+                      className={`video-history-item${isActive ? ' active' : ''}`}
+                      onClick={() => setSelectedHistoryId(item.id)}
+                      title="点击预览此视频"
                     >
-                      <FolderOpen size={14} />
-                    </button>
-                  </div>
-                ))}
+                      <div className="video-history-thumb">
+                        <video
+                          src={localPathToFileUrl(item.localPath)}
+                          muted
+                          loop
+                          playsInline
+                          preload="metadata"
+                          className="video-history-video"
+                          onError={(e) => console.warn('历史缩略图加载失败:', item.localPath, e)}
+                        />
+                      </div>
+                      <div className="video-history-info">
+                        <p className="video-history-prompt">{item.prompt || '(图生视频)'}</p>
+                        <div className="video-history-tags">
+                          <span>{item.duration}秒</span>
+                          <span>{item.params.resolution}</span>
+                          <span>{item.params.ratio}</span>
+                          <span>{item.provider === 'custom' ? '自定义' : '内置'}</span>
+                        </div>
+                        <span className="video-history-time">
+                          {new Date(item.createdAt).toLocaleString('zh-CN')}
+                        </span>
+                      </div>
+                      <button
+                        className="video-history-open"
+                        onClick={(e) => { e.stopPropagation(); openVideoInFolder(item.localPath); }}
+                        title="在文件夹中显示"
+                      >
+                        <FolderOpen size={14} />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

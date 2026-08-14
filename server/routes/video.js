@@ -1,15 +1,13 @@
 /**
- * 视频生成路由（内置模型，由服务器调用方舟 API）
+ * 视频生成路由（内置模型，由服务器调用本地模型服务）
  *
- *  - POST /api/video/generate        创建视频生成任务（Seedance 2.0 预扣积分；1.x 免费；失败自动退还）
- *  - GET  /api/video/tasks/:taskId   查询任务状态（代理方舟；失败自动退还积分）
+ *  - POST /api/video/generate        创建视频生成任务（预扣积分；失败自动退还）
+ *  - GET  /api/video/tasks/:taskId   查询任务状态（代理本地模型服务；失败自动退还积分）
  *  - GET  /api/video/history         当前用户的历史任务列表
+ *  - GET  /api/video/models          后台维护的内置模型列表
  *
- * Seedance 1.0（模型 ID 以 seedance-1-0- 开头）：免费，不扣积分，不做 API Key 校验。
- * Seedance 2.0（模型 ID 以 doubao-seedance-2-0- 开头）：消耗积分，需 ARK_API_KEY。
- *
- * 仅支持内置模型模式。用户自定义模型（自带 key）由客户端直接调用，
- * 不经过此路由、不消耗积分。
+ * 内置模型 = 部署在本地服务器的模型，由服务器统一调用，客户端无需感知 url / api_key。
+ * 用户自定义模型（自带 key）由客户端直接调用，不经过此路由、不消耗积分。
  */
 const express = require('express');
 const db = require('../db');
@@ -18,11 +16,6 @@ const { authRequired } = require('../middleware/auth');
 const { createVideoTask, getVideoTask } = require('../services/arkService');
 
 const router = express.Router();
-
-// 判断是否 Seedance 1.x 免费模型（无需 API Key、不扣积分）
-function isSeedance1xFree(modelId) {
-  return typeof modelId === 'string' && /^seedance-1-0-/i.test(modelId);
-}
 
 function calcPointsCost({ duration, resolution }) {
   const dur = parseInt(duration, 10) || 5;
@@ -60,9 +53,8 @@ router.post('/generate', authRequired, async (req, res) => {
     return res.status(400).json({ error: '提示词和参考图至少需要提供一项' });
   }
 
-  // Seedance 1.x 免费模型：不扣积分；其他模型按规则扣积分
-  const free = isSeedance1xFree(model);
-  const pointsCost = free ? 0 : calcPointsCost({ duration, resolution });
+  // 内置模型按规则扣积分
+  const pointsCost = calcPointsCost({ duration, resolution });
   const userRow = await db.get('SELECT points FROM users WHERE id = ?', req.user.id);
   if (!userRow) {
     return res.status(404).json({ error: '用户不存在' });
@@ -80,21 +72,21 @@ router.post('/generate', authRequired, async (req, res) => {
     await db.run('UPDATE users SET points = points - ?, updated_at = ? WHERE id = ?', pointsCost, now, req.user.id);
   }
 
-  let arkTask;
+  let localTask;
   try {
-    arkTask = await createVideoTask({ prompt, imageUrl, duration, resolution, ratio, watermark, seed, model });
+    localTask = await createVideoTask({ prompt, imageUrl, duration, resolution, ratio, watermark, seed, model });
   } catch (err) {
     if (pointsCost > 0) {
       await db.run('UPDATE users SET points = points + ?, updated_at = ? WHERE id = ?', pointsCost, Date.now(), req.user.id);
     }
-    return res.status(502).json({ error: err.message || '调用方舟创建任务失败' });
+    return res.status(502).json({ error: err.message || '调用本地模型服务创建任务失败' });
   }
 
   const params = { duration, resolution, ratio, watermark, seed };
   const info = await db.run(
     'INSERT INTO video_tasks (user_id, ark_task_id, provider, model, prompt, params, status, points_cost) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    req.user.id, arkTask.taskId, 'seedance',
-    arkTask.model || (settings.get('ark') || {}).defaultModel,
+    req.user.id, localTask.taskId, 'builtin',
+    localTask.model || model || '',
     prompt || '', JSON.stringify(params), 'queued', pointsCost
   );
 
@@ -123,10 +115,10 @@ router.get('/tasks/:taskId', authRequired, async (req, res) => {
   }
 
   try {
-    const arkTask = await getVideoTask(row.ark_task_id);
-    const status = arkTask.status;
-    const videoUrl = status === 'succeeded' ? (arkTask.content?.video_url || null) : null;
-    const errorMsg = status === 'failed' ? (arkTask.error?.message || '视频生成失败') : null;
+    const localTask = await getVideoTask(row.ark_task_id);
+    const status = localTask.status;
+    const videoUrl = status === 'succeeded' ? (localTask.content?.video_url || null) : null;
+    const errorMsg = status === 'failed' ? (localTask.error?.message || '视频生成失败') : null;
     const now = Date.now();
 
     if (status === 'succeeded') {
@@ -145,7 +137,7 @@ router.get('/tasks/:taskId', authRequired, async (req, res) => {
     const remainingRow = await db.get('SELECT points FROM users WHERE id = ?', req.user.id);
     res.json({ ...serializeTask(updated), pointsRemaining: remainingRow.points });
   } catch (err) {
-    res.status(502).json({ error: err.message || '查询方舟任务失败' });
+    res.status(502).json({ error: err.message || '查询本地模型任务失败' });
   }
 });
 
@@ -155,11 +147,11 @@ router.get('/history', authRequired, async (req, res) => {
 });
 
 /**
- * 可选 Seedance 模型列表（公开接口，需登录）
- * 供客户端动态拉取后台维护的内置模型列表
+ * 内置模型列表（公开接口，需登录）
+ * 供客户端动态拉取后台维护的内置模型列表（部署在本地服务器的模型）
  */
 router.get('/models', authRequired, (_req, res) => {
-  const models = settings.get('seedanceModels') || [];
+  const models = settings.get('builtinModels') || [];
   res.json({ models });
 });
 

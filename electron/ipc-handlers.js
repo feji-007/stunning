@@ -14,6 +14,7 @@ const { ipcMain, dialog, shell } = require('electron');
 const { loadConfig, updateConfig, getVideoOutputDir } = require('./configStore');
 const serverClient = require('./serverClient');
 const videoService = require('./videoService');
+const videoHistoryStore = require('./videoHistoryStore');
 
 function registerIpcHandlers() {
   // ============================================================
@@ -41,6 +42,7 @@ function registerIpcHandlers() {
   ipcMain.handle('server:get-profile', () => serverClient.getProfile());
   ipcMain.handle('server:update-profile', (_e, data) => serverClient.updateProfile(data));
   ipcMain.handle('server:get-points', () => serverClient.getPoints());
+  ipcMain.handle('server:get-settings', () => serverClient.getUserSettings());
 
   // ============================================================
   // 充值（模拟支付）
@@ -88,15 +90,22 @@ function registerIpcHandlers() {
   // 获取当前视频输出目录
   ipcMain.handle('video:output-dir', () => getVideoOutputDir());
 
-  // 在系统资源管理器中打开目录
+  // 在系统资源管理器中打开目录并选中文件
+  // 注意：folderPath 实际传入的是视频文件路径，使用 showItemInFolder 会打开父目录并高亮该文件
+  // 若不传则打开视频保存根目录
   ipcMain.handle('video:open-folder', (_e, folderPath) => {
-    const dir = folderPath || getVideoOutputDir();
-    shell.openPath(dir);
+    if (folderPath) {
+      shell.showItemInFolder(folderPath);
+    } else {
+      shell.openPath(getVideoOutputDir());
+    }
     return true;
   });
 
-  // 历史任务（来自服务器，仅内置模型模式有记录）
-  ipcMain.handle('video:history', () => serverClient.getVideoHistory());
+  // 历史任务：本地持久化（含 localPath，内置 + 自定义模型均记录）
+  ipcMain.handle('video:history', () => videoHistoryStore.getHistory());
+  // 清空历史
+  ipcMain.handle('video:clear-history', () => videoHistoryStore.clearHistory());
 
   // 拉取后台维护的内置模型列表
   ipcMain.handle('video:get-models', () => serverClient.getVideoModels());
@@ -113,6 +122,21 @@ function registerIpcHandlers() {
 
     try {
       const result = await videoService.generate(params || {}, (p) => send('video:progress', p));
+      // 生成成功后持久化到本地历史（含 localPath，用于下次启动恢复）
+      if (result.success !== false && result.localPath) {
+        const record = {
+          id: result.taskId || `video_${Date.now()}`,
+          prompt: (params && params.prompt) || '',
+          params: params || {},
+          provider: result.provider || (params && params.provider) || 'seedance',
+          status: 'succeeded',
+          videoUrl: result.videoUrl,
+          localPath: result.localPath,
+          duration: (params && params.duration) || 5,
+          createdAt: Date.now(),
+        };
+        videoHistoryStore.addRecord(record);
+      }
       send('video:success', result);
       return { success: true, ...result };
     } catch (err) {

@@ -39,6 +39,7 @@ contextBridge.exposeInMainWorld('api', {
     getProfile: () => ipcRenderer.invoke('server:get-profile'),
     updateProfile: (data) => ipcRenderer.invoke('server:update-profile', data),
     getPoints: () => ipcRenderer.invoke('server:get-points'),
+    getSettings: () => ipcRenderer.invoke('server:get-settings'),
   },
 
   // ============================================================
@@ -63,8 +64,10 @@ contextBridge.exposeInMainWorld('api', {
     getOutputDir: () => ipcRenderer.invoke('video:output-dir'),
     // 在系统资源管理器中打开目录
     openFolder: (folderPath) => ipcRenderer.invoke('video:open-folder', folderPath),
-    // 历史任务（仅内置模型模式记录在服务器）
+    // 历史任务（本地持久化，含 localPath）
     getHistory: () => ipcRenderer.invoke('video:history'),
+    // 清空历史
+    clearHistory: () => ipcRenderer.invoke('video:clear-history'),
     // 拉取后台维护的内置模型列表
     getModels: () => ipcRenderer.invoke('video:get-models'),
 

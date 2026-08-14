@@ -1552,9 +1552,15 @@ body {
   border-bottom: 1px solid var(--border);
   transition: background 0.15s;
   align-items: center;
+  cursor: pointer;
 }
 .video-history-item:last-child { border-bottom: none; }
 .video-history-item:hover { background: var(--bg-hover); }
+.video-history-item.active {
+  background: var(--bg-hover);
+  border-left: 3px solid var(--accent, #6366f1);
+  padding-left: 9px;
+}
 .video-history-thumb {
   width: 64px;
   height: 40px;

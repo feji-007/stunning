@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { v4 as uuidv4 } from 'uuid';
 import { bridge } from '../ipc/bridge';
 
 /**
@@ -226,11 +225,33 @@ export const useStore = create((set, get) => ({
   // ============================================================
   // 视频生成
   // ============================================================
-  videoHistory: [],          // 本次会话生成的视频 [{ id, prompt, params, videoUrl, localPath, duration, createdAt }]
+  videoHistory: [],          // 持久化的视频历史 [{ id, prompt, params, videoUrl, localPath, duration, createdAt }]
   videoGenStatus: 'idle',    // 'idle' | 'queued' | 'running' | 'downloading' | 'error'
   videoGenError: null,
   videoProgress: { stage: null, status: null },
   seedanceModels: [],        // 后台维护的内置模型列表 [{ id, name, desc }]
+
+  // 启动时加载本地持久化的视频历史
+  loadVideoHistory: async () => {
+    try {
+      const list = await bridge.video.getHistory();
+      set({ videoHistory: Array.isArray(list) ? list : [] });
+      return list;
+    } catch (err) {
+      console.error('加载视频历史失败:', err);
+      return [];
+    }
+  },
+
+  // 清空视频历史
+  clearVideoHistory: async () => {
+    try {
+      await bridge.video.clearHistory();
+      set({ videoHistory: [] });
+    } catch (err) {
+      console.error('清空视频历史失败:', err);
+    }
+  },
 
   // 选择参考图（图生视频）
   selectReferenceImage: async () => {
@@ -285,25 +306,15 @@ export const useStore = create((set, get) => ({
         if (genParams.provider === 'seedance') await get().refreshPoints();
         return null;
       }
-      // 成功后更新状态并加入历史
-      const record = {
-        id: result.taskId || uuidv4(),
-        prompt: genParams.prompt || '',
-        params: genParams,
-        provider: result.provider || genParams.provider,
-        status: 'succeeded',
-        videoUrl: result.videoUrl,
-        localPath: result.localPath,
-        duration: genParams.duration,
-        createdAt: Date.now(),
-      };
-      set((state) => ({
+      // 成功后更新状态；主进程已将记录持久化到本地，这里重新加载保证一致
+      set({
         videoGenStatus: 'idle',
         videoProgress: { stage: null, status: null },
-        videoHistory: [record, ...state.videoHistory].slice(0, 50),
-      }));
+      });
+      await get().loadVideoHistory();
+      const record = get().videoHistory[0];
       // 内置模式消耗积分，刷新余额；自定义模型不消耗积分
-      if (record.provider === 'seedance') await get().refreshPoints();
+      if (record && record.provider === 'seedance') await get().refreshPoints();
       return record;
     } catch (err) {
       offProgress();

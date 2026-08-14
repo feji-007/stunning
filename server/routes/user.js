@@ -1,12 +1,14 @@
 /**
- * 用户路由：资料查询/更新、头像、积分
+ * 用户路由：资料查询/更新、头像、积分、前端运行时配置
  *  - GET    /api/user/profile
  *  - PUT    /api/user/profile        { nickname?, avatar? }
  *  - GET    /api/user/points
  *  - POST   /api/user/points         { delta }   (演示用：增减积分)
+ *  - GET    /api/user/settings                    前端运行时可变配置（视频参数等，由后台管理）
  */
 const express = require('express');
 const db = require('../db');
+const settings = require('../settings');
 const { sanitizeUser } = require('./auth');
 const { authRequired } = require('../middleware/auth');
 
@@ -65,6 +67,12 @@ router.post('/points', authRequired, async (req, res) => {
   );
   const row = await db.get('SELECT points FROM users WHERE id = ?', req.user.id);
   res.json({ points: row.points });
+});
+
+// 前端运行时可变配置（由后台管理）：当前仅返回 videoParams，后续可扩展
+router.get('/settings', authRequired, async (_req, res) => {
+  const videoParams = settings.get('videoParams') || {};
+  res.json({ videoParams });
 });
 
 module.exports = router;
