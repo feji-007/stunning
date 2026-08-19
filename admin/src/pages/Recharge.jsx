@@ -10,7 +10,7 @@ import {
   Card, Row, Col, Statistic, Button, Modal, Form,
   Input, InputNumber, Popconfirm, Space, message,
 } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { rechargeApi } from '../api';
 import ResizableTable from '../components/ResizableTable';
 
@@ -22,6 +22,7 @@ export default function RechargePage() {
   const [editing, setEditing] = useState(null); // null=新增，对象=编辑
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm();
+  const [selectedIds, setSelectedIds] = useState([]);
 
   // 加载套餐列表
   const loadPlans = useCallback(async () => {
@@ -115,6 +116,14 @@ export default function RechargePage() {
     await saveAll(nextPlans);
   };
 
+  // 批量删除选中的套餐
+  const handleBatchDelete = async () => {
+    if (selectedIds.length === 0) return;
+    const nextPlans = plans.filter((p) => !selectedIds.includes(p.id));
+    await saveAll(nextPlans);
+    setSelectedIds([]);
+  };
+
   const columns = [
     {
       title: '套餐ID',
@@ -193,7 +202,24 @@ export default function RechargePage() {
         </Col>
       </Row>
 
-      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'flex-end' }}>
+      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Popconfirm
+          title={`确认删除选中的 ${selectedIds.length} 个套餐？`}
+          okText="删除"
+          okButtonProps={{ danger: true }}
+          cancelText="取消"
+          disabled={selectedIds.length === 0}
+          onConfirm={handleBatchDelete}
+        >
+          <Button
+            danger
+            icon={<DeleteOutlined />}
+            disabled={selectedIds.length === 0}
+            loading={submitting}
+          >
+            批量删除{selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}
+          </Button>
+        </Popconfirm>
         <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>新增套餐</Button>
       </div>
 
@@ -203,6 +229,10 @@ export default function RechargePage() {
         dataSource={plans}
         loading={loading}
         pagination={false}
+        rowSelection={{
+          selectedRowKeys: selectedIds,
+          onChange: (keys) => setSelectedIds(keys),
+        }}
       />
 
       <Modal

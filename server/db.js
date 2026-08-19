@@ -43,8 +43,8 @@ function buildSchema() {
   const PK = dialect === 'mysql' ? 'INT PRIMARY KEY AUTO_INCREMENT' : 'INTEGER PRIMARY KEY AUTOINCREMENT';
   const NOW = db.nowExpr;
 
-  // Choose types per dialect: MySQL doesn't allow DEFAULT for TEXT/BLOB
-  const TYPE_TEXT = dialect === 'mysql' ? 'VARCHAR(1024)' : 'TEXT';
+  // Choose types per dialect: for large text values use LONGTEXT on MySQL
+  const TYPE_TEXT = dialect === 'mysql' ? 'LONGTEXT' : 'TEXT';
   const TYPE_SHORT = dialect === 'mysql' ? 'VARCHAR(255)' : 'TEXT';
   const TS_TYPE = dialect === 'mysql' ? 'BIGINT' : 'INTEGER';
 
@@ -68,7 +68,7 @@ function buildSchema() {
       ark_task_id   ${TYPE_SHORT},
       provider      ${TYPE_SHORT}    NOT NULL DEFAULT 'builtin',
       model         ${TYPE_SHORT},
-      prompt        ${TYPE_TEXT}    NOT NULL DEFAULT '',
+      prompt        ${dialect === 'mysql' ? `${TYPE_TEXT}    NOT NULL` : `${TYPE_TEXT}    NOT NULL DEFAULT ''`},
       params        ${TYPE_TEXT},
       status        ${TYPE_SHORT}    NOT NULL DEFAULT 'queued',
       video_url     ${TYPE_TEXT},
@@ -180,7 +180,7 @@ async function initDb() {
   }
 
   // 迁移：为已有 video_tasks 表补 local_path 列（列已存在则忽略错误）
-  const localPathColType = db.dialect === 'mysql' ? 'VARCHAR(1024)' : 'TEXT';
+  const localPathColType = db.dialect === 'mysql' ? 'LONGTEXT' : 'TEXT';
   try {
     await db.exec(`ALTER TABLE video_tasks ADD COLUMN local_path ${localPathColType}`);
   } catch {}
@@ -188,10 +188,17 @@ async function initDb() {
   // 如果已有 video_url/local_path 列但类型过小（MySQL），尝试修改列类型以避免数据截断
   if (db.dialect === 'mysql') {
     try {
-      await db.exec(`ALTER TABLE video_tasks MODIFY COLUMN video_url ${db.dialect === 'mysql' ? 'VARCHAR(1024)' : 'TEXT'}`);
+      await db.exec(`ALTER TABLE video_tasks MODIFY COLUMN video_url ${db.dialect === 'mysql' ? 'LONGTEXT' : 'TEXT'}`);
     } catch {}
     try {
-      await db.exec(`ALTER TABLE video_tasks MODIFY COLUMN local_path ${db.dialect === 'mysql' ? 'VARCHAR(1024)' : 'TEXT'}`);
+      await db.exec(`ALTER TABLE video_tasks MODIFY COLUMN local_path ${db.dialect === 'mysql' ? 'LONGTEXT' : 'TEXT'}`);
+    } catch {}
+    // Ensure settings.value/description can hold large JSON
+    try {
+      await db.exec(`ALTER TABLE settings MODIFY COLUMN value ${db.dialect === 'mysql' ? 'LONGTEXT' : 'TEXT'}`);
+    } catch {}
+    try {
+      await db.exec(`ALTER TABLE settings MODIFY COLUMN description ${db.dialect === 'mysql' ? 'LONGTEXT' : 'TEXT'}`);
     } catch {}
   }
 
@@ -258,7 +265,15 @@ async function initDb() {
       const insertSql = db.dialect === 'mysql'
         ? `INSERT INTO settings (` + '\`key\`' + `, value, description) VALUES (?, ?, ?)`
         : `INSERT INTO settings (key, value, description) VALUES (?, ?, ?)`;
-      await db.run(insertSql, s.key, s.value, s.description);
+      try {
+        await db.run(insertSql, s.key, s.value, s.description);
+      } catch (err) {
+        if (db.dialect === 'mysql' && err && err.code === 'ER_DATA_TOO_LONG') {
+          try { await db.exec(`ALTER TABLE settings MODIFY COLUMN value LONGTEXT`); } catch {}
+          try { await db.exec(`ALTER TABLE settings MODIFY COLUMN description LONGTEXT`); } catch {}
+          await db.run(insertSql, s.key, s.value, s.description);
+        } else throw err;
+      }
     }
     console.log('[db] 已初始化默认系统配置');
   }
@@ -289,7 +304,14 @@ async function migrateLegacySettings() {
     try {
       const models = JSON.parse(oldModelsRow.value);
       if (Array.isArray(models)) {
-        await db.run(upsertSettingsSql(), 'builtinModels', JSON.stringify(models), Date.now());
+        try {
+          await db.run(upsertSettingsSql(), 'builtinModels', JSON.stringify(models), Date.now());
+        } catch (err) {
+          if (db.dialect === 'mysql' && err && err.code === 'ER_DATA_TOO_LONG') {
+            try { await db.exec(`ALTER TABLE settings MODIFY COLUMN value LONGTEXT`); } catch {}
+            await db.run(upsertSettingsSql(), 'builtinModels', JSON.stringify(models), Date.now());
+          } else throw err;
+        }
         console.log('[db] 已迁移 seedanceModels → builtinModels');
       }
     } catch (err) {
@@ -308,7 +330,14 @@ async function migrateLegacySettings() {
         apiKey: ark.apiKey || '',
         enabled: !!ark.apiKey,
       };
-      await db.run(upsertSettingsSql(), 'localModelService', JSON.stringify(service), Date.now());
+      try {
+        await db.run(upsertSettingsSql(), 'localModelService', JSON.stringify(service), Date.now());
+      } catch (err) {
+        if (db.dialect === 'mysql' && err && err.code === 'ER_DATA_TOO_LONG') {
+          try { await db.exec(`ALTER TABLE settings MODIFY COLUMN value LONGTEXT`); } catch {}
+          await db.run(upsertSettingsSql(), 'localModelService', JSON.stringify(service), Date.now());
+        } else throw err;
+      }
       console.log('[db] 已迁移 ark → localModelService');
     } catch (err) {
       console.error('[db] 迁移 ark 失败:', err);
@@ -321,11 +350,18 @@ async function migrateLegacySettings() {
     try {
       const dft = settings.get('defaultPoints');
       const insertSql = db.dialect === 'mysql'
-        ? `INSERT INTO settings (key, value, description, updated_at) VALUES (?, ?, ?, ?)
+        ? `INSERT INTO settings (` + '\`key\`' + `, value, description, updated_at) VALUES (?, ?, ?, ?)
            ON DUPLICATE KEY UPDATE value = VALUES(value), description = VALUES(description), updated_at = VALUES(updated_at)`
         : `INSERT INTO settings (key, value, description, updated_at) VALUES (?, ?, ?, ?)
            ON CONFLICT(key) DO UPDATE SET value = excluded.value, description = excluded.description, updated_at = excluded.updated_at`;
-      await db.run(insertSql, 'defaultPoints', JSON.stringify(dft), '新用户注册赠送积分', Date.now());
+      try {
+        await db.run(insertSql, 'defaultPoints', JSON.stringify(dft), '新用户注册赠送积分', Date.now());
+      } catch (err) {
+        if (db.dialect === 'mysql' && err && err.code === 'ER_DATA_TOO_LONG') {
+          try { await db.exec(`ALTER TABLE settings MODIFY COLUMN value LONGTEXT`); } catch {}
+          await db.run(insertSql, 'defaultPoints', JSON.stringify(dft), '新用户注册赠送积分', Date.now());
+        } else throw err;
+      }
       console.log('[db] 已补齐 defaultPoints 配置（默认值：' + dft + '）');
     } catch (err) {
       console.error('[db] 补齐 defaultPoints 失败:', err);
@@ -338,11 +374,18 @@ async function migrateLegacySettings() {
     try {
       const vd = settings.get('videoParams');
       const insertSql = db.dialect === 'mysql'
-        ? `INSERT INTO settings (key, value, description, updated_at) VALUES (?, ?, ?, ?)
-           ON DUPLICATE KEY UPDATE value = VALUES(value), description = VALUES(description), updated_at = VALUES(updated_at)`
+        ? `INSERT INTO settings (` + '\`key\`' + `, value, description, updated_at) VALUES (?, ?, ?, ?)
+          ON DUPLICATE KEY UPDATE value = VALUES(value), description = VALUES(description), updated_at = VALUES(updated_at)`
         : `INSERT INTO settings (key, value, description, updated_at) VALUES (?, ?, ?, ?)
-           ON CONFLICT(key) DO UPDATE SET value = excluded.value, description = excluded.description, updated_at = excluded.updated_at`;
-      await db.run(insertSql, 'videoParams', JSON.stringify(vd), '视频生成参数（时长/分辨率/比例选项及默认值）', Date.now());
+          ON CONFLICT(key) DO UPDATE SET value = excluded.value, description = excluded.description, updated_at = excluded.updated_at`;
+      try {
+        await db.run(insertSql, 'videoParams', JSON.stringify(vd), '视频生成参数（时长/分辨率/比例选项及默认值）', Date.now());
+      } catch (err) {
+        if (db.dialect === 'mysql' && err && err.code === 'ER_DATA_TOO_LONG') {
+          try { await db.exec(`ALTER TABLE settings MODIFY COLUMN value LONGTEXT`); } catch {}
+          await db.run(insertSql, 'videoParams', JSON.stringify(vd), '视频生成参数（时长/分辨率/比例选项及默认值）', Date.now());
+        } else throw err;
+      }
       console.log('[db] 已补齐 videoParams 配置');
     } catch (err) {
       console.error('[db] 补齐 videoParams 失败:', err);

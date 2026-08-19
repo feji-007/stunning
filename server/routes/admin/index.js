@@ -2,12 +2,13 @@
  * 管理后台 API 聚合路由
  *
  * 挂载于 /api/admin，包含：
- *   /auth      管理员认证
- *   /users     用户管理
- *   /recharge  充值套餐 / 订单管理
- *   /settings  系统配置管理
- *   /video     视频任务管理
- *   /feedback  用户意见反馈管理
+ *   /auth           管理员认证
+ *   /users          用户管理
+ *   /recharge       充值套餐 / 订单管理
+ *   /settings       系统配置管理
+ *   /video          视频任务管理
+ *   /feedback       用户意见反馈管理
+ *   /user-settings  用户自定义模型配置查看
  */
 const express = require('express');
 const router = express.Router();
@@ -18,5 +19,6 @@ router.use('/recharge', require('./recharge'));
 router.use('/settings', require('./settings'));
 router.use('/video', require('./video'));
 router.use('/feedback', require('./feedback'));
+router.use('/user-settings', require('./user-settings'));
 
 module.exports = router;

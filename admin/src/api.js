@@ -72,6 +72,7 @@ export const usersApi = {
   update: (id, data) => request('PUT', `/api/admin/users/${id}`, data),
   adjustPoints: (id, delta) => request('POST', `/api/admin/users/${id}/points`, { delta }),
   remove: (id) => request('DELETE', `/api/admin/users/${id}`),
+  batchRemove: (ids) => request('DELETE', '/api/admin/users', { ids }),
 };
 
 // ===== 充值管理 =====
@@ -111,4 +112,13 @@ export const feedbackApi = {
   unreadCount: () => request('GET', '/api/admin/feedback/unread-count'),
   markRead: (id, isRead) => request('PUT', `/api/admin/feedback/${id}/read`, { isRead }),
   remove: (id) => request('DELETE', `/api/admin/feedback/${id}`),
+  batchRemove: (ids) => request('DELETE', '/api/admin/feedback', { ids }),
+};
+
+// ===== 用户自定义模型配置 =====
+export const userSettingsApi = {
+  list: (params) => {
+    const q = new URLSearchParams(params).toString();
+    return request('GET', `/api/admin/user-settings?${q}`);
+  },
 };

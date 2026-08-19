@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-route
 import { Layout, Menu, Dropdown, Button, message, Spin, Badge } from 'antd';
 import {
   DashboardOutlined, UserOutlined, GiftOutlined, SettingOutlined,
-  VideoCameraOutlined, LogoutOutlined, DownOutlined, LockOutlined, MessageOutlined,
+  VideoCameraOutlined, LogoutOutlined, DownOutlined, LockOutlined, MessageOutlined, ToolOutlined,
 } from '@ant-design/icons';
 import { authApi, getToken, setToken, feedbackApi } from './api';
 import LoginPage from './pages/Login.jsx';
@@ -14,6 +14,7 @@ import OrdersPage from './pages/Orders.jsx';
 import VideoTasksPage from './pages/VideoTasks.jsx';
 import FeedbackPage from './pages/Feedback.jsx';
 import SettingsPage from './pages/Settings.jsx';
+import UserSettingsPage from './pages/UserSettings.jsx';
 
 const { Header, Sider, Content } = Layout;
 
@@ -25,6 +26,7 @@ const menuItems = [
   { key: '/orders', icon: <GiftOutlined />, label: '订单记录' },
   { key: '/video-tasks', icon: <VideoCameraOutlined />, label: '视频任务' },
   { key: '/feedback', icon: <MessageOutlined />, label: '用户意见' },
+  { key: '/user-settings', icon: <ToolOutlined />, label: '模型配置' },
   { key: '/settings', icon: <SettingOutlined />, label: '系统配置' },
 ];
 
@@ -175,6 +177,7 @@ export default function App() {
         <Route path="/orders" element={<ProtectedRoute><AdminLayout><OrdersPage /></AdminLayout></ProtectedRoute>} />
         <Route path="/video-tasks" element={<ProtectedRoute><AdminLayout><VideoTasksPage /></AdminLayout></ProtectedRoute>} />
         <Route path="/feedback" element={<ProtectedRoute><AdminLayout><FeedbackPage /></AdminLayout></ProtectedRoute>} />
+        <Route path="/user-settings" element={<ProtectedRoute><AdminLayout><UserSettingsPage /></AdminLayout></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute><AdminLayout><SettingsPage /></AdminLayout></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

@@ -127,6 +127,30 @@ export default function UsersPage() {
     }
   };
 
+  // 批量删除选中的用户
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [batchDeleting, setBatchDeleting] = useState(false);
+
+  const handleBatchDelete = async () => {
+    if (selectedIds.length === 0) return;
+    setBatchDeleting(true);
+    try {
+      const res = await usersApi.batchRemove(selectedIds);
+      message.success(`已删除 ${res.deleted ?? selectedIds.length} 条`);
+      setSelectedIds([]);
+      // 删除后若当前页空了，回到上一页
+      if (selectedIds.length >= data.length && page > 1) {
+        setPage(page - 1);
+      } else {
+        fetchUsers();
+      }
+    } catch (err) {
+      message.error(err.message || '批量删除失败');
+    } finally {
+      setBatchDeleting(false);
+    }
+  };
+
   const columns = [
     { title: 'ID', dataIndex: 'id', width: 80, sorter: (a, b) => a.id - b.id },
     {
@@ -202,12 +226,36 @@ export default function UsersPage() {
           </Space>
         }
       >
+        <Space style={{ marginBottom: 16 }}>
+          <Popconfirm
+            title={`确认删除选中的 ${selectedIds.length} 个用户？`}
+            description="删除后不可恢复，关联数据将一并清除"
+            okText="删除"
+            okButtonProps={{ danger: true }}
+            cancelText="取消"
+            disabled={selectedIds.length === 0}
+            onConfirm={handleBatchDelete}
+          >
+            <Button
+              danger
+              icon={<DeleteOutlined />}
+              disabled={selectedIds.length === 0}
+              loading={batchDeleting}
+            >
+              批量删除{selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}
+            </Button>
+          </Popconfirm>
+        </Space>
         <ResizableTable
           rowKey="id"
           columns={columns}
           dataSource={data}
           loading={loading}
           scroll={{ x: 900 }}
+          rowSelection={{
+            selectedRowKeys: selectedIds,
+            onChange: (keys) => setSelectedIds(keys),
+          }}
           pagination={{
             current: page,
             pageSize,

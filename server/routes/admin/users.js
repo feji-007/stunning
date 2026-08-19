@@ -5,6 +5,7 @@
  *  - PUT    /api/admin/users/:id      编辑用户（昵称/积分）
  *  - POST   /api/admin/users/:id/points  调整积分
  *  - DELETE /api/admin/users/:id      删除用户
+ *  - DELETE /api/admin/users          批量删除用户（body: { ids: number[] }）
  */
 const express = require('express');
 const db = require('../../db');
@@ -105,6 +106,29 @@ router.delete('/:id', adminRequired, async (req, res) => {
   if (!row) return res.status(404).json({ error: '用户不存在' });
   await db.run('DELETE FROM users WHERE id = ?', req.params.id);
   res.json({ ok: true });
+});
+
+// 批量删除用户（body: { ids: number[] }）
+//   - ids 数组去重并校验为正整数
+//   - 使用事务确保原子性；关联表（video_tasks / feedback 等）通过外键 ON DELETE CASCADE 自动清理
+router.delete('/', adminRequired, async (req, res) => {
+  const raw = Array.isArray(req.body?.ids) ? req.body.ids : [];
+  const ids = Array.from(new Set(raw.map((v) => parseInt(v, 10)).filter((v) => Number.isInteger(v) && v > 0)));
+  if (ids.length === 0) {
+    return res.status(400).json({ error: 'ids 不能为空' });
+  }
+  if (ids.length > 500) {
+    return res.status(400).json({ error: '单次最多删除 500 条' });
+  }
+  try {
+    await db.transaction(async (tx) => {
+      const placeholders = ids.map(() => '?').join(', ');
+      await tx.run(`DELETE FROM users WHERE id IN (${placeholders})`, ...ids);
+    });
+    res.json({ ok: true, deleted: ids.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message || '批量删除失败' });
+  }
 });
 
 module.exports = router;
