@@ -43,6 +43,9 @@ function registerIpcHandlers() {
   ipcMain.handle('server:update-profile', (_e, data) => serverClient.updateProfile(data));
   ipcMain.handle('server:get-points', () => serverClient.getPoints());
   ipcMain.handle('server:get-settings', () => serverClient.getUserSettings());
+  ipcMain.handle('server:get-custom-model', () => serverClient.getCustomModel());
+  ipcMain.handle('server:save-custom-model', (_e, data) => serverClient.saveCustomModel(data));
+  ipcMain.handle('server:sync-custom-model', () => serverClient.syncCustomModelFromServer());
   ipcMain.handle('server:submit-feedback', (_e, payload) => serverClient.submitFeedback(payload));
 
   // ============================================================

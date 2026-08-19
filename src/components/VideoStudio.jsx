@@ -77,7 +77,7 @@ function calcPointsCost(duration, resolution) {
 export default function VideoStudio() {
   const appConfig = useStore((s) => s.appConfig);
   const loadAppConfig = useStore((s) => s.loadAppConfig);
-  const saveAppConfig = useStore((s) => s.saveAppConfig);
+  const saveVideoConfig = useStore((s) => s.saveVideoConfig);
   const user = useStore((s) => s.user);
   const videoGenStatus = useStore((s) => s.videoGenStatus);
   const videoGenError = useStore((s) => s.videoGenError);
@@ -322,7 +322,7 @@ export default function VideoStudio() {
   };
 
   const handleSwitchProvider = async (p) => {
-    await saveAppConfig({ videoProvider: p });
+    await saveVideoConfig({ videoProvider: p });
   };
 
   // 自定义模式：选择预设模型（持久化到配置）
@@ -330,7 +330,7 @@ export default function VideoStudio() {
     setCustomModel(modelId);
     setCustomInputMode(false);
     setCustomInputValue(modelId);
-    await saveAppConfig({ customVideo: { modelId } });
+    await saveVideoConfig({ customVideo: { modelId } });
   };
 
   // 自定义模式：应用手动输入的模型 ID
@@ -338,7 +338,7 @@ export default function VideoStudio() {
     const val = customInputValue.trim();
     if (!val) return;
     setCustomModel(val);
-    await saveAppConfig({ customVideo: { modelId: val } });
+    await saveVideoConfig({ customVideo: { modelId: val } });
   };
 
   // 自定义模式：切换到自定义输入

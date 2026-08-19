@@ -57,6 +57,9 @@ const mockServerApi = {
   updateProfile: async () => { throw new Error('非 Electron 环境'); },
   getPoints: async () => ({ points: 0 }),
   getSettings: async () => ({ videoParams: null }),
+  getCustomModel: async () => null,
+  saveCustomModel: async () => {},
+  syncCustomModel: async () => {},
   submitFeedback: async () => { throw new Error('非 Electron 环境'); },
 };
 
@@ -128,6 +131,9 @@ export const bridge = {
     updateProfile: (data) => wrap(resolve('server', 'updateProfile')(data), 'server.updateProfile'),
     getPoints: () => wrap(resolve('server', 'getPoints')(), 'server.getPoints'),
     getSettings: () => wrap(resolve('server', 'getSettings')(), 'server.getSettings'),
+    getCustomModel: () => wrap(resolve('server', 'getCustomModel')(), 'server.getCustomModel'),
+    saveCustomModel: (data) => wrap(resolve('server', 'saveCustomModel')(data), 'server.saveCustomModel'),
+    syncCustomModel: () => wrap(resolve('server', 'syncCustomModel')(), 'server.syncCustomModel'),
     submitFeedback: (payload) => wrap(resolve('server', 'submitFeedback')(payload), 'server.submitFeedback'),
   },
 

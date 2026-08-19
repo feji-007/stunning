@@ -40,6 +40,9 @@ contextBridge.exposeInMainWorld('api', {
     updateProfile: (data) => ipcRenderer.invoke('server:update-profile', data),
     getPoints: () => ipcRenderer.invoke('server:get-points'),
     getSettings: () => ipcRenderer.invoke('server:get-settings'),
+    getCustomModel: () => ipcRenderer.invoke('server:get-custom-model'),
+    saveCustomModel: (data) => ipcRenderer.invoke('server:save-custom-model', data),
+    syncCustomModel: () => ipcRenderer.invoke('server:sync-custom-model'),
     submitFeedback: (payload) => ipcRenderer.invoke('server:submit-feedback', payload),
   },
 

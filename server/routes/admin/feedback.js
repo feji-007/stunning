@@ -64,8 +64,8 @@ router.get('/', adminRequired, async (req, res) => {
        LEFT JOIN users u ON f.user_id = u.id
        ${whereClause}
        ORDER BY f.is_read ASC, f.created_at DESC
-       LIMIT ? OFFSET ?`,
-    ...params, pageSize, offset
+       LIMIT ${pageSize} OFFSET ${offset}`,
+    ...params
   );
 
   res.json({

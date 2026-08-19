@@ -20,6 +20,7 @@ export default function SettingsPanel() {
   const appConfig = useStore((s) => s.appConfig);
   const user = useStore((s) => s.user);
   const saveAppConfig = useStore((s) => s.saveAppConfig);
+  const saveVideoConfig = useStore((s) => s.saveVideoConfig);
   const selectVideoOutputDir = useStore((s) => s.selectVideoOutputDir);
   const setActiveView = useStore((s) => s.setActiveView);
 
@@ -37,7 +38,7 @@ export default function SettingsPanel() {
   const provider = appConfig?.videoProvider || 'seedance';
 
   const handleSaveCustom = async () => {
-    await saveAppConfig({
+    await saveVideoConfig({
       customVideo: {
         baseURL: baseURLInput.trim(),
         apiKey: apiKeyInput.trim(),
@@ -79,7 +80,7 @@ export default function SettingsPanel() {
   };
 
   const handleSelectProvider = async (p) => {
-    await saveAppConfig({ videoProvider: p });
+    await saveVideoConfig({ videoProvider: p });
   };
 
   return (
@@ -265,6 +266,29 @@ export default function SettingsPanel() {
             <FolderOpen size={15} />
             <span>选择</span>
           </button>
+        </div>
+      </div>
+
+      {/* 外部链接打开方式 */}
+      <div className="settings-section">
+        <h3 className="settings-section-title">
+          <ExternalLink size={16} />
+          外部链接打开方式
+        </h3>
+        <p className="field-hint" style={{ marginBottom: 12 }}>
+          点击应用内的外部链接时，选择默认打开方式。选择「每次询问」时会在点击时弹出选择框，勾选「记住选择」后会自动应用此处设置。
+        </p>
+        <div className="model-dir-row">
+          <select
+            className="model-dir-input"
+            value={appConfig?.linkOpenBehavior || 'ask'}
+            onChange={(e) => saveAppConfig({ linkOpenBehavior: e.target.value })}
+            style={{ cursor: 'pointer' }}
+          >
+            <option value="ask">每次询问</option>
+            <option value="internal">在应用内打开</option>
+            <option value="external">用系统浏览器打开</option>
+          </select>
         </div>
       </div>
 

@@ -73,6 +73,12 @@ const DEFAULT_CONFIG = {
     apiKey: '',
     modelId: 'doubao-seedance-2-0-pro',
   },
+
+  // ===== 外部链接打开行为 =====
+  // 'ask'      = 每次询问（弹出选择框，可勾选"记住选择"）
+  // 'internal' = 在应用内新窗口打开
+  // 'external' = 调用系统默认浏览器打开
+  linkOpenBehavior: 'ask',
 };
 
 let cache = null;

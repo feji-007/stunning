@@ -5,10 +5,13 @@
  *  - GET    /api/user/points
  *  - POST   /api/user/points         { delta }   (演示用：增减积分)
  *  - GET    /api/user/settings                    前端运行时可变配置（视频参数等，由后台管理）
+ *  - GET    /api/user/custom-model                用户私有的自定义模型配置（加密存储）
+ *  - PUT    /api/user/custom-model                保存自定义模型配置
  */
 const express = require('express');
 const db = require('../db');
 const settings = require('../settings');
+const { encrypt, decrypt } = require('../crypto');
 const { sanitizeUser } = require('./auth');
 const { authRequired } = require('../middleware/auth');
 
@@ -95,6 +98,47 @@ router.post('/feedback', authRequired, async (req, res) => {
     req.user.id, cat, text, contactStr
   );
   res.json({ id: info.lastInsertRowid, ok: true });
+});
+
+// ============================================================
+// 用户私有的自定义模型配置（加密存储，随账号走）
+//   GET /api/user/custom-model    → { videoProvider, customVideo }
+//   PUT /api/user/custom-model    body: { videoProvider, customVideo }
+// ============================================================
+const CUSTOM_MODEL_KEY = 'videoConfig';
+
+router.get('/custom-model', authRequired, async (req, res) => {
+  const keyCol = db.dialect === 'mysql' ? '`key`' : 'key';
+  const row = await db.get(
+    `SELECT value FROM user_settings WHERE user_id = ? AND ${keyCol} = ?`,
+    req.user.id, CUSTOM_MODEL_KEY
+  );
+  if (!row) return res.json(null);
+  try {
+    const json = decrypt(row.value);
+    res.json(JSON.parse(json));
+  } catch {
+    // 解密失败（如密钥变更），返回空让客户端重新填写
+    res.json(null);
+  }
+});
+
+router.put('/custom-model', authRequired, async (req, res) => {
+  const { videoProvider, customVideo } = req.body || {};
+  const payload = {
+    videoProvider: typeof videoProvider === 'string' ? videoProvider : 'seedance',
+    customVideo: {
+      baseURL: typeof customVideo?.baseURL === 'string' ? customVideo.baseURL : '',
+      apiKey: typeof customVideo?.apiKey === 'string' ? customVideo.apiKey : '',
+      modelId: typeof customVideo?.modelId === 'string' ? customVideo.modelId : '',
+    },
+  };
+  const encrypted = encrypt(JSON.stringify(payload));
+  await db.run(
+    db.upsertUserSettingsSql(),
+    req.user.id, CUSTOM_MODEL_KEY, encrypted, Date.now()
+  );
+  res.json(payload);
 });
 
 module.exports = router;

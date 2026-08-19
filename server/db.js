@@ -71,8 +71,8 @@ function buildSchema() {
       prompt        ${TYPE_TEXT}    NOT NULL DEFAULT '',
       params        ${TYPE_TEXT},
       status        ${TYPE_SHORT}    NOT NULL DEFAULT 'queued',
-      video_url     ${TYPE_SHORT},
-      local_path    ${TYPE_SHORT},
+      video_url     ${TYPE_TEXT},
+      local_path    ${TYPE_TEXT},
       points_cost   INTEGER NOT NULL DEFAULT 0,
       refunded      INTEGER NOT NULL DEFAULT 0,
       error         ${TYPE_TEXT},
@@ -112,6 +112,15 @@ function buildSchema() {
       updated_at  ${TS_TYPE} NOT NULL DEFAULT (${NOW})
     )`,
 
+    `CREATE TABLE IF NOT EXISTS user_settings (
+      user_id     INTEGER NOT NULL,
+      ${KEY_COL}   ${TYPE_SHORT} NOT NULL,
+      value       ${TYPE_TEXT} NOT NULL,
+      updated_at  ${TS_TYPE} NOT NULL DEFAULT (${NOW}),
+      PRIMARY KEY (user_id, ${KEY_COL}),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`,
+
     `CREATE TABLE IF NOT EXISTS feedback (
       id            ${PK},
       user_id       INTEGER NOT NULL,
@@ -146,6 +155,17 @@ function upsertSettingsSql() {
           ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`;
 }
 
+// ===== user_settings UPSERT（方言差异）=====
+function upsertUserSettingsSql() {
+  const keyCol = db.dialect === 'mysql' ? '`key`' : 'key';
+  if (db.dialect === 'mysql') {
+    return `INSERT INTO user_settings (user_id, ${keyCol}, value, updated_at) VALUES (?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE value = VALUES(value), updated_at = VALUES(updated_at)`;
+  }
+  return `INSERT INTO user_settings (user_id, ${keyCol}, value, updated_at) VALUES (?, ?, ?, ?)
+          ON CONFLICT(user_id, ${keyCol}) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`;
+}
+
 // ===== 初始化：建表 + 种子数据 =====
 async function initDb() {
   const { tables, indexes } = buildSchema();
@@ -164,6 +184,16 @@ async function initDb() {
   try {
     await db.exec(`ALTER TABLE video_tasks ADD COLUMN local_path ${localPathColType}`);
   } catch {}
+
+  // 如果已有 video_url/local_path 列但类型过小（MySQL），尝试修改列类型以避免数据截断
+  if (db.dialect === 'mysql') {
+    try {
+      await db.exec(`ALTER TABLE video_tasks MODIFY COLUMN video_url ${db.dialect === 'mysql' ? 'VARCHAR(1024)' : 'TEXT'}`);
+    } catch {}
+    try {
+      await db.exec(`ALTER TABLE video_tasks MODIFY COLUMN local_path ${db.dialect === 'mysql' ? 'VARCHAR(1024)' : 'TEXT'}`);
+    } catch {}
+  }
 
   // 建索引（MySQL 不支持 IF NOT EXISTS，用 try/catch 忽略已存在）
   for (const sql of indexes) {
@@ -323,3 +353,4 @@ async function migrateLegacySettings() {
 module.exports = db;
 module.exports.initDb = initDb;
 module.exports.upsertSettingsSql = upsertSettingsSql;
+module.exports.upsertUserSettingsSql = upsertUserSettingsSql;

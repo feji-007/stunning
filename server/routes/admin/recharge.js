@@ -53,8 +53,8 @@ router.get('/orders', adminRequired, async (req, res) => {
     ...params
   );
   const rows = await db.all(
-    `SELECT o.*, u.username, u.nickname FROM recharge_orders o LEFT JOIN users u ON o.user_id = u.id ${whereClause} ORDER BY o.created_at DESC LIMIT ? OFFSET ?`,
-    ...params, pageSize, offset
+    `SELECT o.*, u.username, u.nickname FROM recharge_orders o LEFT JOIN users u ON o.user_id = u.id ${whereClause} ORDER BY o.created_at DESC LIMIT ${pageSize} OFFSET ${offset}`,
+    ...params
   );
 
   const list = rows.map((r) => ({
@@ -90,7 +90,18 @@ router.get('/stats', adminRequired, async (_req, res) => {
     SELECT COUNT(*) AS orderCount, COALESCE(SUM(price), 0) AS totalAmount
     FROM recharge_orders WHERE status = 'paid' AND paid_at >= ?
   `, todayStart.getTime());
-  res.json({ total: paid, today });
+  // 聚合函数在某些驱动下可能返回字符串，强制转为数字
+  res.json({
+    total: {
+      orderCount: Number(paid.orderCount) || 0,
+      totalAmount: Number(paid.totalAmount) || 0,
+      totalPoints: Number(paid.totalPoints) || 0,
+    },
+    today: {
+      orderCount: Number(today.orderCount) || 0,
+      totalAmount: Number(today.totalAmount) || 0,
+    },
+  });
 });
 
 module.exports = router;

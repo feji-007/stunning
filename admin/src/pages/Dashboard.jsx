@@ -162,13 +162,13 @@ export default function DashboardPage() {
                 {today.orderCount || 0}
               </Descriptions.Item>
               <Descriptions.Item label="今日充值金额">
-                {(today.totalAmount || 0).toFixed(2)} 元
+                {Number(today.totalAmount || 0).toFixed(2)} 元
               </Descriptions.Item>
               <Descriptions.Item label="累计订单数">
                 {total.orderCount || 0}
               </Descriptions.Item>
               <Descriptions.Item label="累计充值金额">
-                {(total.totalAmount || 0).toFixed(2)} 元
+                {Number(total.totalAmount || 0).toFixed(2)} 元
               </Descriptions.Item>
               <Descriptions.Item label="累计充值积分">
                 {total.totalPoints || 0}

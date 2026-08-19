@@ -96,17 +96,27 @@ async function register(username, password) {
   const data = await request('POST', '/api/auth/register', { username, password });
   // 服务器返回 { token, user }
   updateConfig({ authToken: data.token, userId: data.user?.id || null });
+  // 从服务器拉取用户私有的自定义模型配置，同步到本地缓存
+  await syncCustomModelFromServer();
   return data;
 }
 
 async function login(username, password) {
   const data = await request('POST', '/api/auth/login', { username, password });
   updateConfig({ authToken: data.token, userId: data.user?.id || null });
+  // 从服务器拉取用户私有的自定义模型配置，同步到本地缓存
+  await syncCustomModelFromServer();
   return data;
 }
 
 function logout() {
-  updateConfig({ authToken: '', userId: null });
+  // 清除登录态 + 重置自定义模型本地缓存（防止下一用户看到上一用户的 API Key）
+  updateConfig({
+    authToken: '',
+    userId: null,
+    videoProvider: 'seedance',
+    customVideo: { baseURL: 'https://ark.cn-beijing.volces.com/api/v3', apiKey: '', modelId: 'doubao-seedance-2-0-pro' },
+  });
 }
 
 // ==================== 用户资料 / 积分 / 运行时配置 ====================
@@ -120,6 +130,37 @@ const addPoints = (delta) => request('POST', '/api/user/points', { delta });
  * @returns {object} { videoParams: { durations, resolutions, ratios, defaultDuration, defaultResolution, defaultRatio, defaultWatermark, defaultSeed } }
  */
 const getUserSettings = () => request('GET', '/api/user/settings');
+
+/**
+ * 获取当前用户私有的自定义模型配置（服务器加密存储）
+ * @returns {object|null} { videoProvider, customVideo } 或 null（未配置）
+ */
+const getCustomModel = () => request('GET', '/api/user/custom-model');
+
+/**
+ * 保存当前用户的自定义模型配置到服务器（加密存储）
+ * @param {object} data - { videoProvider, customVideo }
+ */
+const saveCustomModel = (data) => request('PUT', '/api/user/custom-model', data);
+
+/**
+ * 从服务器拉取用户自定义模型配置，同步到本地缓存（configStore）
+ * 登录/注册后自动调用；拉取失败时保留本地默认值，不阻塞登录流程
+ */
+async function syncCustomModelFromServer() {
+  try {
+    const data = await getCustomModel();
+    if (data && (data.videoProvider || data.customVideo)) {
+      const partial = {};
+      if (data.videoProvider) partial.videoProvider = data.videoProvider;
+      if (data.customVideo) partial.customVideo = data.customVideo;
+      updateConfig(partial);
+    }
+  } catch (err) {
+    // 服务器不可达或未配置时静默失败，使用本地默认值
+    console.error('[serverClient] 同步自定义模型配置失败:', err.message);
+  }
+}
 
 /**
  * 提交意见反馈
@@ -208,6 +249,9 @@ module.exports = {
   getPoints,
   addPoints,
   getUserSettings,
+  getCustomModel,
+  saveCustomModel,
+  syncCustomModelFromServer,
   submitFeedback,
   // 内置模型视频
   createVideoTask,

@@ -55,8 +55,8 @@ router.get('/tasks', adminRequired, async (req, res) => {
     ...params
   );
   const rows = await db.all(
-    `SELECT t.*, u.username, u.nickname FROM video_tasks t LEFT JOIN users u ON t.user_id = u.id ${whereClause} ORDER BY t.created_at DESC LIMIT ? OFFSET ?`,
-    ...params, pageSize, offset
+    `SELECT t.*, u.username, u.nickname FROM video_tasks t LEFT JOIN users u ON t.user_id = u.id ${whereClause} ORDER BY t.created_at DESC LIMIT ${pageSize} OFFSET ${offset}`,
+    ...params
   );
 
   res.json({ list: rows.map(serializeTask), total: totalRow.c, page, pageSize });
@@ -73,11 +73,14 @@ router.get('/stats', adminRequired, async (_req, res) => {
     'SELECT COUNT(*) AS count FROM video_tasks WHERE created_at >= ?',
     todayStart.getTime()
   );
-  const stats = { byStatus: {}, total: 0, todayCount: todayRow.count, totalPointsCost: 0 };
+  const stats = { byStatus: {}, total: 0, todayCount: Number(todayRow.count) || 0, totalPointsCost: 0 };
   for (const r of byStatus) {
-    stats.byStatus[r.status] = { count: r.count, points: r.points };
-    stats.total += r.count;
-    stats.totalPointsCost += r.points;
+    // 聚合函数在某些驱动下可能返回字符串，强制转为数字
+    const count = Number(r.count) || 0;
+    const points = Number(r.points) || 0;
+    stats.byStatus[r.status] = { count, points };
+    stats.total += count;
+    stats.totalPointsCost += points;
   }
   res.json(stats);
 });

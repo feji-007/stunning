@@ -1,9 +1,78 @@
-const { app, BrowserWindow, protocol, net } = require('electron');
+const { app, BrowserWindow, protocol, net, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { registerIpcHandlers } = require('./ipc-handlers');
+const { loadConfig, updateConfig } = require('./configStore');
 
 let mainWindow = null;
+
+// 判断是否为外部链接（http/https 且非本地开发地址）
+function isExternalUrl(url) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+    if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// 在应用内新窗口中打开外部链接
+function openInternalLink(url) {
+  const win = new BrowserWindow({
+    width: 1200,
+    height: 800,
+    backgroundColor: '#1a1a2e',
+    parent: mainWindow,
+    title: url,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  win.loadURL(url);
+  // 子窗口内的链接统一交给外部浏览器，避免嵌套弹窗
+  win.webContents.setWindowOpenHandler(({ url: childUrl }) => {
+    if (isExternalUrl(childUrl)) shell.openExternal(childUrl);
+    return { action: 'deny' };
+  });
+}
+
+// 处理外部链接：按用户偏好（内部 / 外部 / 询问）打开
+async function handleExternalLink(targetUrl) {
+  const behavior = loadConfig().linkOpenBehavior || 'ask';
+
+  if (behavior === 'internal') {
+    openInternalLink(targetUrl);
+    return;
+  }
+  if (behavior === 'external') {
+    shell.openExternal(targetUrl);
+    return;
+  }
+
+  // 询问模式：弹出带"记住选择"复选框的对话框
+  const result = await dialog.showMessageBox(mainWindow, {
+    type: 'question',
+    title: '打开链接',
+    message: '如何打开此链接？',
+    detail: targetUrl,
+    buttons: ['在应用内打开', '用系统浏览器打开', '取消'],
+    cancelId: 2,
+    checkboxLabel: '记住我的选择（以后不再询问）',
+    checkboxChecked: false,
+  });
+
+  if (result.response === 2) return; // 取消
+
+  if (result.checkboxChecked) {
+    updateConfig({ linkOpenBehavior: result.response === 0 ? 'internal' : 'external' });
+  }
+
+  if (result.response === 0) openInternalLink(targetUrl);
+  else shell.openExternal(targetUrl);
+}
 
 // 在 app ready 前注册本地视频访问的自定义协议，避免 file:// 协议的 CSP/安全限制
 protocol.registerSchemesAsPrivileged([
@@ -46,6 +115,20 @@ function createWindow() {
   } else {
     mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
   }
+
+  // 拦截 window.open 和 target="_blank" 的外部链接
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (isExternalUrl(url)) handleExternalLink(url);
+    return { action: 'deny' };
+  });
+
+  // 拦截当前窗口导航到外部链接（无 target 的 <a> 点击）
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (isExternalUrl(url)) {
+      event.preventDefault();
+      handleExternalLink(url);
+    }
+  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;

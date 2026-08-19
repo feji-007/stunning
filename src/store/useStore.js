@@ -38,6 +38,9 @@ export const useStore = create((set, get) => ({
         try {
           const profile = await bridge.server.getProfile();
           set({ isAuthenticated: true, user: profile, authInitialized: true });
+          // 从服务器同步用户私有的自定义模型配置（可能在其他机器上更新过）
+          await bridge.server.syncCustomModel();
+          await get().loadAppConfig();
           return true;
         } catch (err) {
           // 仅当 401（token 失效）时才清除登录态；
@@ -81,6 +84,8 @@ export const useStore = create((set, get) => ({
     try {
       const data = await bridge.server.login(username, password);
       set({ isAuthenticated: true, user: data.user, isAuthLoading: false });
+      // serverClient.login 已从服务器同步自定义模型配置到本地，刷新 store
+      await get().loadAppConfig();
       return data;
     } catch (err) {
       set({ isAuthLoading: false, authError: err.message });
@@ -101,6 +106,8 @@ export const useStore = create((set, get) => ({
         } catch {}
       }
       set({ isAuthenticated: true, user: data.user, isAuthLoading: false });
+      // serverClient.register 已从服务器同步自定义模型配置到本地，刷新 store
+      await get().loadAppConfig();
       return data;
     } catch (err) {
       set({ isAuthLoading: false, authError: err.message });
@@ -111,6 +118,8 @@ export const useStore = create((set, get) => ({
   // 退出登录
   logout: async () => {
     await bridge.server.logout();
+    // serverClient.logout 已重置本地自定义模型缓存，刷新 store
+    await get().loadAppConfig();
     set({
       isAuthenticated: false,
       user: null,
@@ -224,6 +233,25 @@ export const useStore = create((set, get) => ({
   saveAppConfig: async (partial) => {
     const config = await bridge.config.update(partial);
     set({ appConfig: config });
+    return config;
+  },
+
+  // 保存用户私有的视频配置（videoProvider + customVideo）到本地缓存 + 服务器
+  // 与 saveAppConfig 的区别：此方法会同步到服务器数据库，配置随账号走
+  saveVideoConfig: async (partial) => {
+    // 1. 先更新本地配置（videoService 立即生效）
+    const config = await bridge.config.update(partial);
+    set({ appConfig: config });
+    // 2. 同步到服务器（加密存储，绑定用户账号）
+    try {
+      await bridge.server.saveCustomModel({
+        videoProvider: config.videoProvider,
+        customVideo: config.customVideo,
+      });
+    } catch (err) {
+      // 服务器同步失败不阻塞本地使用（离线时仍可用本地缓存）
+      console.error('同步视频配置到服务器失败:', err);
+    }
     return config;
   },
 
