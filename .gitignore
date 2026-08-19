@@ -9,3 +9,4 @@ Thumbs.db
 *.pem
 .vscode/
 .idea/
+server/data/backup/
