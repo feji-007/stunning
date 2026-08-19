@@ -81,7 +81,8 @@ const DEFAULTS = {
  */
 async function loadAll() {
   try {
-    const rows = await db.all('SELECT key, value FROM settings');
+    const selAllSql = db.dialect === 'mysql' ? 'SELECT `key` AS `key`, value FROM settings' : 'SELECT key, value FROM settings';
+    const rows = await db.all(selAllSql);
     for (const row of rows) {
       try {
         cache.set(row.key, JSON.parse(row.value));
@@ -145,7 +146,8 @@ async function set(key, value) {
  * 读取配置项的描述信息（异步，用于后台展示）
  */
 async function getMeta(key) {
-  const row = await db.get('SELECT description, updated_at FROM settings WHERE key = ?', key);
+  const selMetaSql = db.dialect === 'mysql' ? 'SELECT description, updated_at FROM settings WHERE `key` = ?' : 'SELECT description, updated_at FROM settings WHERE key = ?';
+  const row = await db.get(selMetaSql, key);
   return row || null;
 }
 
@@ -153,7 +155,10 @@ async function getMeta(key) {
  * 读取所有配置项（含描述、更新时间，用于后台列表）
  */
 async function getAllWithMeta() {
-  const rows = await db.all('SELECT key, value, description, updated_at FROM settings ORDER BY key');
+  const selAllMetaSql = db.dialect === 'mysql'
+    ? 'SELECT `key` AS `key`, value, description, updated_at FROM settings ORDER BY `key`'
+    : 'SELECT key, value, description, updated_at FROM settings ORDER BY key';
+  const rows = await db.all(selAllMetaSql);
   return rows.map((row) => {
     let value;
     try { value = JSON.parse(row.value); } catch { value = row.value; }

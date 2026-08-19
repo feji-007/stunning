@@ -43,76 +43,84 @@ function buildSchema() {
   const PK = dialect === 'mysql' ? 'INT PRIMARY KEY AUTO_INCREMENT' : 'INTEGER PRIMARY KEY AUTOINCREMENT';
   const NOW = db.nowExpr;
 
+  // Choose types per dialect: MySQL doesn't allow DEFAULT for TEXT/BLOB
+  const TYPE_TEXT = dialect === 'mysql' ? 'VARCHAR(1024)' : 'TEXT';
+  const TYPE_SHORT = dialect === 'mysql' ? 'VARCHAR(255)' : 'TEXT';
+  const TS_TYPE = dialect === 'mysql' ? 'BIGINT' : 'INTEGER';
+
+  const KEY_COL = dialect === 'mysql' ? '`key`' : 'key';
+
   const tables = [
     `CREATE TABLE IF NOT EXISTS users (
       id            ${PK},
-      username      TEXT    NOT NULL UNIQUE,
-      password_hash TEXT    NOT NULL,
-      nickname      TEXT    NOT NULL DEFAULT '',
-      avatar        TEXT    NOT NULL DEFAULT '',
+      username      ${TYPE_SHORT}    NOT NULL UNIQUE,
+      password_hash ${TYPE_SHORT}    NOT NULL,
+      nickname      ${TYPE_SHORT}    NOT NULL DEFAULT '',
+      avatar        ${TYPE_SHORT}    NOT NULL DEFAULT '',
       points        INTEGER NOT NULL DEFAULT 0,
-      created_at    INTEGER NOT NULL DEFAULT (${NOW}),
-      updated_at    INTEGER NOT NULL DEFAULT (${NOW})
+      created_at    ${TS_TYPE} NOT NULL DEFAULT (${NOW}),
+      updated_at    ${TS_TYPE} NOT NULL DEFAULT (${NOW})
     )`,
 
     `CREATE TABLE IF NOT EXISTS video_tasks (
       id            ${PK},
       user_id       INTEGER NOT NULL,
-      ark_task_id   TEXT,
-      provider      TEXT    NOT NULL DEFAULT 'builtin',
-      model         TEXT,
-      prompt        TEXT    NOT NULL DEFAULT '',
-      params        TEXT,
-      status        TEXT    NOT NULL DEFAULT 'queued',
-      video_url     TEXT,
+      ark_task_id   ${TYPE_SHORT},
+      provider      ${TYPE_SHORT}    NOT NULL DEFAULT 'builtin',
+      model         ${TYPE_SHORT},
+      prompt        ${TYPE_TEXT}    NOT NULL DEFAULT '',
+      params        ${TYPE_TEXT},
+      status        ${TYPE_SHORT}    NOT NULL DEFAULT 'queued',
+      video_url     ${TYPE_SHORT},
+      local_path    ${TYPE_SHORT},
       points_cost   INTEGER NOT NULL DEFAULT 0,
       refunded      INTEGER NOT NULL DEFAULT 0,
-      error         TEXT,
-      created_at    INTEGER NOT NULL DEFAULT (${NOW}),
-      updated_at    INTEGER NOT NULL DEFAULT (${NOW}),
+      error         ${TYPE_TEXT},
+      created_at    ${TS_TYPE} NOT NULL DEFAULT (${NOW}),
+      updated_at    ${TS_TYPE} NOT NULL DEFAULT (${NOW}),
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )`,
 
     `CREATE TABLE IF NOT EXISTS recharge_orders (
       id            ${PK},
-      order_no      TEXT    NOT NULL UNIQUE,
+      order_no      ${TYPE_SHORT}    NOT NULL UNIQUE,
       user_id       INTEGER NOT NULL,
-      plan_id       TEXT    NOT NULL,
+      plan_id       ${TYPE_SHORT}    NOT NULL,
       price         INTEGER NOT NULL,
       points        INTEGER NOT NULL,
       bonus         INTEGER NOT NULL DEFAULT 0,
-      status        TEXT    NOT NULL DEFAULT 'pending',
-      paid_at       INTEGER,
-      created_at    INTEGER NOT NULL DEFAULT (${NOW}),
-      updated_at    INTEGER NOT NULL DEFAULT (${NOW}),
+      status        ${TYPE_SHORT}    NOT NULL DEFAULT 'pending',
+      paid_at       ${TS_TYPE},
+      created_at    ${TS_TYPE} NOT NULL DEFAULT (${NOW}),
+      updated_at    ${TS_TYPE} NOT NULL DEFAULT (${NOW}),
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )`,
 
     `CREATE TABLE IF NOT EXISTS admins (
       id            ${PK},
-      username      TEXT    NOT NULL UNIQUE,
-      password_hash TEXT    NOT NULL,
-      nickname      TEXT    NOT NULL DEFAULT '管理员',
-      created_at    INTEGER NOT NULL DEFAULT (${NOW}),
-      updated_at    INTEGER NOT NULL DEFAULT (${NOW})
+      username      ${TYPE_SHORT}    NOT NULL UNIQUE,
+      password_hash ${TYPE_SHORT}    NOT NULL,
+      nickname      ${TYPE_SHORT}    NOT NULL DEFAULT '管理员',
+      created_at    ${TS_TYPE} NOT NULL DEFAULT (${NOW}),
+      updated_at    ${TS_TYPE} NOT NULL DEFAULT (${NOW})
     )`,
 
     `CREATE TABLE IF NOT EXISTS settings (
-      key         TEXT PRIMARY KEY,
-      value       TEXT NOT NULL,
-      description TEXT,
-      updated_at  INTEGER NOT NULL DEFAULT (${NOW})
+      ${KEY_COL}         ${TYPE_SHORT} PRIMARY KEY,
+      value       ${TYPE_TEXT} NOT NULL,
+      description ${TYPE_TEXT},
+      updated_at  ${TS_TYPE} NOT NULL DEFAULT (${NOW})
     )`,
 
     `CREATE TABLE IF NOT EXISTS feedback (
       id            ${PK},
       user_id       INTEGER NOT NULL,
-      category      TEXT    NOT NULL DEFAULT 'other',
-      content       TEXT    NOT NULL,
-      contact       TEXT    NOT NULL DEFAULT '',
+      category      ${TYPE_SHORT}    NOT NULL DEFAULT 'other',
+      content       ${TYPE_TEXT}    NOT NULL,
+      contact       ${TYPE_SHORT}    NOT NULL DEFAULT '',
       is_read       INTEGER NOT NULL DEFAULT 0,
-      created_at    INTEGER NOT NULL DEFAULT (${NOW}),
-      updated_at    INTEGER NOT NULL DEFAULT (${NOW}),
+      created_at    ${TS_TYPE} NOT NULL DEFAULT (${NOW}),
+      updated_at    ${TS_TYPE} NOT NULL DEFAULT (${NOW}),
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )`,
   ];
@@ -131,8 +139,8 @@ function buildSchema() {
 // ===== UPSERT SQL（方言差异）=====
 function upsertSettingsSql() {
   if (db.dialect === 'mysql') {
-    return `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
-            ON DUPLICATE KEY UPDATE value = VALUES(value), updated_at = VALUES(updated_at)`;
+    return `INSERT INTO settings (` + '\`key\`' + `, value, updated_at) VALUES (?, ?, ?)
+      ON DUPLICATE KEY UPDATE value = VALUES(value), updated_at = VALUES(updated_at)`;
   }
   return `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
           ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`;
@@ -146,10 +154,16 @@ async function initDb() {
   await db.exec('DROP TABLE IF EXISTS agent_messages');
   await db.exec('DROP TABLE IF EXISTS agents');
 
-  // 建表
+  // 建表（CREATE TABLE IF NOT EXISTS：已有则保留历史数据，缺失则新建）
   for (const sql of tables) {
     await db.exec(sql);
   }
+
+  // 迁移：为已有 video_tasks 表补 local_path 列（列已存在则忽略错误）
+  const localPathColType = db.dialect === 'mysql' ? 'VARCHAR(1024)' : 'TEXT';
+  try {
+    await db.exec(`ALTER TABLE video_tasks ADD COLUMN local_path ${localPathColType}`);
+  } catch {}
 
   // 建索引（MySQL 不支持 IF NOT EXISTS，用 try/catch 忽略已存在）
   for (const sql of indexes) {
@@ -211,7 +225,10 @@ async function initDb() {
       }), description: '本地模型服务配置（地址/凭证，由后台管理）' },
     ];
     for (const s of initSettings) {
-      await db.run('INSERT INTO settings (key, value, description) VALUES (?, ?, ?)', s.key, s.value, s.description);
+      const insertSql = db.dialect === 'mysql'
+        ? `INSERT INTO settings (` + '\`key\`' + `, value, description) VALUES (?, ?, ?)`
+        : `INSERT INTO settings (key, value, description) VALUES (?, ?, ?)`;
+      await db.run(insertSql, s.key, s.value, s.description);
     }
     console.log('[db] 已初始化默认系统配置');
   }
@@ -235,8 +252,9 @@ async function migrateLegacySettings() {
   const settings = require('./settings');
 
   // 迁移 seedanceModels → builtinModels
-  const oldModelsRow = await db.get('SELECT value FROM settings WHERE key = ?', 'seedanceModels');
-  const newModelsRow = await db.get('SELECT value FROM settings WHERE key = ?', 'builtinModels');
+  const selKey = db.dialect === 'mysql' ? 'SELECT value FROM settings WHERE `key` = ?' : 'SELECT value FROM settings WHERE key = ?';
+  const oldModelsRow = await db.get(selKey, 'seedanceModels');
+  const newModelsRow = await db.get(selKey, 'builtinModels');
   if (oldModelsRow && !newModelsRow) {
     try {
       const models = JSON.parse(oldModelsRow.value);
@@ -250,8 +268,8 @@ async function migrateLegacySettings() {
   }
 
   // 迁移 ark → localModelService
-  const oldArkRow = await db.get('SELECT value FROM settings WHERE key = ?', 'ark');
-  const newServiceRow = await db.get('SELECT value FROM settings WHERE key = ?', 'localModelService');
+  const oldArkRow = await db.get(selKey, 'ark');
+  const newServiceRow = await db.get(selKey, 'localModelService');
   if (oldArkRow && !newServiceRow) {
     try {
       const ark = JSON.parse(oldArkRow.value);
@@ -268,7 +286,7 @@ async function migrateLegacySettings() {
   }
 
   // 补齐 defaultPoints：若 DB 不存在则写入（优先读 settings 默认值，其与 DEFAULTS 一致）
-  const dftPointsRow = await db.get('SELECT value FROM settings WHERE key = ?', 'defaultPoints');
+  const dftPointsRow = await db.get(selKey, 'defaultPoints');
   if (!dftPointsRow) {
     try {
       const dft = settings.get('defaultPoints');
@@ -285,7 +303,7 @@ async function migrateLegacySettings() {
   }
 
   // 补齐 videoParams：若 DB 不存在则写入
-  const videoParamsRow = await db.get('SELECT value FROM settings WHERE key = ?', 'videoParams');
+  const videoParamsRow = await db.get(selKey, 'videoParams');
   if (!videoParamsRow) {
     try {
       const vd = settings.get('videoParams');

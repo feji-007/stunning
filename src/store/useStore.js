@@ -311,7 +311,7 @@ export const useStore = create((set, get) => ({
         if (genParams.provider === 'seedance') await get().refreshPoints();
         return null;
       }
-      // 成功后更新状态；主进程已将记录持久化到本地，这里重新加载保证一致
+      // 成功后更新状态；主进程已将记录上报到服务端数据库，这里重新加载保证一致
       set({
         videoGenStatus: 'idle',
         videoProgress: { stage: null, status: null },
@@ -319,7 +319,7 @@ export const useStore = create((set, get) => ({
       await get().loadVideoHistory();
       const record = get().videoHistory[0];
       // 内置模式消耗积分，刷新余额；自定义模型不消耗积分
-      if (record && record.provider === 'seedance') await get().refreshPoints();
+      if (genParams.provider === 'seedance') await get().refreshPoints();
       return record;
     } catch (err) {
       offProgress();

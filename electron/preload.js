@@ -65,7 +65,7 @@ contextBridge.exposeInMainWorld('api', {
     getOutputDir: () => ipcRenderer.invoke('video:output-dir'),
     // 在系统资源管理器中打开目录
     openFolder: (folderPath) => ipcRenderer.invoke('video:open-folder', folderPath),
-    // 历史任务（本地持久化，含 localPath）
+    // 历史任务（服务端数据库存储，按 user_id 区分，含 localPath）
     getHistory: () => ipcRenderer.invoke('video:history'),
     // 清空历史
     clearHistory: () => ipcRenderer.invoke('video:clear-history'),

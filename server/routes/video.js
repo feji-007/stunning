@@ -36,8 +36,10 @@ function serializeTask(row) {
     model: row.model,
     prompt: row.prompt,
     params,
+    duration: params.duration,
     status: row.status,
     videoUrl: row.video_url,
+    localPath: row.local_path,
     pointsCost: row.points_cost,
     refunded: !!row.refunded,
     error: row.error,
@@ -144,6 +146,59 @@ router.get('/tasks/:taskId', authRequired, async (req, res) => {
 router.get('/history', authRequired, async (req, res) => {
   const rows = await db.all('SELECT * FROM video_tasks WHERE user_id = ? ORDER BY created_at DESC LIMIT 50', req.user.id);
   res.json(rows.map(serializeTask));
+});
+
+/**
+ * 自定义模型任务结果上报
+ * 自定义模式由客户端直接调用方舟兼容端点，不经过服务器扣积分；
+ * 但需在完成后上报结果到 video_tasks 表，供后台管理查看统计。
+ * points_cost 固定为 0，refunded 固定为 0。
+ */
+router.post('/record', authRequired, async (req, res) => {
+  const { provider, model, prompt, params, status, videoUrl, arkTaskId, localPath, error } = req.body || {};
+
+  if (provider !== 'custom') {
+    return res.status(400).json({ error: '此接口仅用于自定义模型任务上报' });
+  }
+
+  const finalStatus = ['succeeded', 'failed'].includes(status) ? status : 'succeeded';
+  const info = await db.run(
+    'INSERT INTO video_tasks (user_id, ark_task_id, provider, model, prompt, params, status, video_url, local_path, points_cost, refunded, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    req.user.id,
+    arkTaskId || '',
+    'custom',
+    model || '',
+    prompt || '',
+    JSON.stringify(params || {}),
+    finalStatus,
+    finalStatus === 'succeeded' ? (videoUrl || '') : '',
+    finalStatus === 'succeeded' ? (localPath || '') : '',
+    0,
+    0,
+    finalStatus === 'failed' ? (error || '视频生成失败') : null
+  );
+
+  const row = await db.get('SELECT * FROM video_tasks WHERE id = ?', info.lastInsertRowid);
+  res.status(201).json(serializeTask(row));
+});
+
+/**
+ * 更新视频任务的本地下载路径
+ * 视频下载到客户端本地后，客户端上报 localPath 到服务端，
+ * 供历史记录播放（localPath 为客户端本地路径，仅同一机器有效）。
+ */
+router.patch('/tasks/:taskId/local-path', authRequired, async (req, res) => {
+  const { localPath } = req.body || {};
+  if (!localPath) {
+    return res.status(400).json({ error: '缺少 localPath' });
+  }
+  const row = await db.get('SELECT * FROM video_tasks WHERE id = ? AND user_id = ?', req.params.taskId, req.user.id);
+  if (!row) {
+    return res.status(404).json({ error: '任务不存在' });
+  }
+  await db.run('UPDATE video_tasks SET local_path = ?, updated_at = ? WHERE id = ?', localPath, Date.now(), row.id);
+  const updated = await db.get('SELECT * FROM video_tasks WHERE id = ?', row.id);
+  res.json(serializeTask(updated));
 });
 
 /**

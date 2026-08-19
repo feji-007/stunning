@@ -144,9 +144,22 @@ const createVideoTask = (params) => request('POST', '/api/video/generate', param
 const getVideoTask = (taskId) => request('GET', `/api/video/tasks/${taskId}`);
 
 /**
+ * 更新视频任务的本地下载路径（视频下载到本地后上报，供历史记录播放）
+ */
+const updateVideoLocalPath = (taskId, localPath) =>
+  request('PATCH', `/api/video/tasks/${taskId}/local-path`, { localPath });
+
+/**
  * 当前用户的历史视频任务
  */
 const getVideoHistory = () => request('GET', '/api/video/history');
+
+/**
+ * 上报自定义模型视频任务结果（供后台管理查看统计）
+ * 自定义模式不经过服务器扣积分，但完成后上报结果到 video_tasks 表。
+ * @param {object} data - { provider, model, prompt, params, status, videoUrl, arkTaskId, error }
+ */
+const recordVideoTask = (data) => request('POST', '/api/video/record', data);
 
 /**
  * 拉取后台维护的内置模型列表
@@ -199,7 +212,9 @@ module.exports = {
   // 内置模型视频
   createVideoTask,
   getVideoTask,
+  updateVideoLocalPath,
   getVideoHistory,
+  recordVideoTask,
   getVideoModels,
   // 充值
   getRechargePlans,

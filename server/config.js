@@ -23,7 +23,7 @@ module.exports = {
   // 通过环境变量 DB_DRIVER 选择驱动：'sqlite'（默认）或 'mysql'
   // 数据库连接信息全部留在服务器，客户端无感
   db: {
-    driver: (process.env.DB_DRIVER || 'sqlite').toLowerCase(),
+    driver: (process.env.DB_DRIVER || 'mysql').toLowerCase(),
     sqlite: {
       // SQLite 数据库文件路径
       dbPath: path.join(DATA_DIR, 'stunning.db'),
@@ -32,7 +32,7 @@ module.exports = {
       host: process.env.DB_HOST || '127.0.0.1',
       port: parseInt(process.env.DB_PORT || '3306', 10),
       user: process.env.DB_USER || 'root',
-      password: process.env.DB_PASSWORD || '',
+      password: process.env.DB_PASSWORD || '123456',
       database: process.env.DB_NAME || 'stunning',
       connectionLimit: parseInt(process.env.DB_POOL_SIZE || '10', 10),
     },

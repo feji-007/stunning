@@ -40,9 +40,12 @@ router.get('/', adminRequired, async (req, res) => {
   }
 
   const totalRow = await db.get(`SELECT COUNT(*) AS c FROM users ${where}`, ...params);
+  // Some MySQL servers/clients have issues binding LIMIT/OFFSET with prepared
+  // statements. `pageSize` and `offset` are validated integers, so safely
+  // interpolate them directly into the SQL string.
   const rows = await db.all(
-    `SELECT * FROM users ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-    ...params, pageSize, offset
+    `SELECT * FROM users ${where} ORDER BY created_at DESC LIMIT ${pageSize} OFFSET ${offset}`,
+    ...params
   );
 
   res.json({

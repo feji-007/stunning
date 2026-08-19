@@ -11,10 +11,10 @@
  *   - 视频生成（内置模型 + 自定义模型）
  */
 const { ipcMain, dialog, shell } = require('electron');
+const fs = require('fs');
 const { loadConfig, updateConfig, getVideoOutputDir } = require('./configStore');
 const serverClient = require('./serverClient');
 const videoService = require('./videoService');
-const videoHistoryStore = require('./videoHistoryStore');
 
 function registerIpcHandlers() {
   // ============================================================
@@ -103,10 +103,18 @@ function registerIpcHandlers() {
     return true;
   });
 
-  // 历史任务：本地持久化（含 localPath，内置 + 自定义模型均记录）
-  ipcMain.handle('video:history', () => videoHistoryStore.getHistory());
-  // 清空历史
-  ipcMain.handle('video:clear-history', () => videoHistoryStore.clearHistory());
+  // 历史任务：从服务端数据库读取（按 user_id 区分），过滤本地文件已不存在的记录
+  ipcMain.handle('video:history', async () => {
+    try {
+      const tasks = await serverClient.getVideoHistory();
+      return (tasks || []).filter((t) => t.localPath && fs.existsSync(t.localPath));
+    } catch (err) {
+      console.error('[video] 加载历史失败:', err.message);
+      return [];
+    }
+  });
+  // 清空历史（保留服务端数据，仅返回空列表；当前 UI 未使用）
+  ipcMain.handle('video:clear-history', () => []);
 
   // 拉取后台维护的内置模型列表
   ipcMain.handle('video:get-models', () => serverClient.getVideoModels());
@@ -121,27 +129,58 @@ function registerIpcHandlers() {
       } catch {}
     };
 
+    const cfg = loadConfig();
+    const provider = (params && params.provider) || cfg.videoProvider || 'seedance';
+    const taskParams = params ? {
+      duration: params.duration,
+      resolution: params.resolution,
+      ratio: params.ratio,
+      watermark: params.watermark,
+      seed: params.seed,
+    } : {};
+    const model = (params && params.model)
+      || (provider === 'custom' && cfg.customVideo && cfg.customVideo.modelId) || '';
+    const prompt = (params && params.prompt) || '';
+
+    // 上报任务结果 + localPath 到服务端（数据库存储历史）
+    const reportTask = async (status, result, errorMsg) => {
+      try {
+        if (provider === 'custom') {
+          // 自定义模式：创建记录并带上 localPath
+          await serverClient.recordVideoTask({
+            provider: 'custom',
+            model,
+            prompt,
+            params: taskParams,
+            status,
+            videoUrl: result && result.videoUrl,
+            arkTaskId: (result && (result.arkTaskId || result.taskId)) || '',
+            localPath: result && result.localPath,
+            error: errorMsg || null,
+          });
+        } else if (status === 'succeeded' && result && result.taskId && result.localPath) {
+          // 内置模式：记录已存在，仅更新 localPath
+          await serverClient.updateVideoLocalPath(result.taskId, result.localPath);
+        }
+      } catch (err) {
+        // 上报失败不影响本地视频生成结果
+        console.error('[video] 上报任务结果失败:', err.message);
+      }
+    };
+
     try {
       const result = await videoService.generate(params || {}, (p) => send('video:progress', p));
-      // 生成成功后持久化到本地历史（含 localPath，用于下次启动恢复）
-      if (result.success !== false && result.localPath) {
-        const record = {
-          id: result.taskId || `video_${Date.now()}`,
-          prompt: (params && params.prompt) || '',
-          params: params || {},
-          provider: result.provider || (params && params.provider) || 'seedance',
-          status: 'succeeded',
-          videoUrl: result.videoUrl,
-          localPath: result.localPath,
-          duration: (params && params.duration) || 5,
-          createdAt: Date.now(),
-        };
-        videoHistoryStore.addRecord(record);
-      }
+      // 上报成功结果 + localPath 到服务端
+      await reportTask('succeeded', result, null);
       send('video:success', result);
       return { success: true, ...result };
     } catch (err) {
       send('video:error', { message: err.message });
+      // 自定义模式失败上报（用户主动取消不上报）
+      const isCancelled = /取消/.test(err.message || '');
+      if (provider === 'custom' && !isCancelled) {
+        await reportTask('failed', null, err.message);
+      }
       return { success: false, error: err.message };
     }
   });
