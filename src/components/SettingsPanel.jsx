@@ -6,8 +6,12 @@ import {
   Sparkles, Wand2, Coins, Loader2, CheckCircle2, AlertCircle,
 } from 'lucide-react';
 
-// 自定义模型模式常用模型快捷预设（仅保留需 API Key 的 2.0 系列；1.x 系列为免费模型归入内置模型）
+// 自定义模型快捷预设：所有需要 API Key 的 Seedance 系列（1.x + 2.x）均归入自定义模型
 const CUSTOM_MODEL_PRESETS = [
+  { id: 'seedance-1-0-lite-t2v', name: 'Seedance 1.0 Lite 文生' },
+  { id: 'seedance-1-0-lite-i2v', name: 'Seedance 1.0 Lite 图生' },
+  { id: 'seedance-1-0-pro-t2v', name: 'Seedance 1.0 Pro 文生' },
+  { id: 'seedance-1-0-pro-i2v', name: 'Seedance 1.0 Pro 图生' },
   { id: 'doubao-seedance-2-0-pro', name: 'Seedance 2.0 Pro' },
   { id: 'doubao-seedance-2-0-fast', name: 'Seedance 2.0 Fast' },
 ];
@@ -92,7 +96,7 @@ export default function SettingsPanel() {
           视频生成提供商
         </h3>
         <p className="field-hint" style={{ marginBottom: 12 }}>
-          选择视频生成方式：内置模型（消耗积分，含免费的 Seedance 1.0 系列）或自定义模型（自带 Key）。
+          选择视频生成方式：内置模型（部署在本地服务器，消耗积分）或自定义模型（自带 API Key，例如 Seedance 系列）。
         </p>
 
         <div className="video-mode-tabs" style={{ marginBottom: 16 }}>
@@ -118,13 +122,13 @@ export default function SettingsPanel() {
             <div className="video-apikey-banner">
               <Coins size={16} />
               <span>
-                内置模型无需配置 API Key，由服务器统一调用。
+                内置模型部署在本地服务器，由服务器统一调用，用户无需配置 URL / API Key。
                 当前剩余 <strong>{user?.points ?? 0}</strong> 积分。
               </span>
             </div>
             <ul className="settings-info-list" style={{ marginTop: 12 }}>
-              <li><strong>Seedance 1.0 Pro / Lite</strong>（文生 / 图生）：免费，不消耗积分，由服务器统一免 Key 调用。</li>
-              <li><strong>Seedance 2.0 Pro / Fast</strong>：积分规则：5 秒 720p = 10 积分，5 秒 1080p = 20 积分，10 秒翻倍。</li>
+              <li><strong>内置模型</strong>：部署在本地服务器的视频生成模型（当前为占位示例，由管理员在后台维护）。</li>
+              <li>积分规则：5 秒 720p = 10 积分，5 秒 1080p = 20 积分，10 秒翻倍。</li>
               <li>生成失败会自动退还已扣除的积分。</li>
               <li>积分由服务器统一管理，注册账号即赠送 100 积分。</li>
             </ul>
@@ -135,7 +139,7 @@ export default function SettingsPanel() {
         {provider === 'custom' && (
           <div className="settings-section">
             <p className="field-hint" style={{ marginBottom: 12 }}>
-              填写方舟 API 兼容的视频生成端点。使用你自己的 API Key，调用不消耗积分。
+              填写方舟 API 兼容的视频生成端点。使用你自己的 API Key（例如 Seedance 系列），调用不消耗积分。
             </p>
 
             <div className="video-apikey-row">
@@ -143,6 +147,7 @@ export default function SettingsPanel() {
               <input
                 type="text"
                 className="video-apikey-input"
+                style={{ width: '80%' }}
                 value={baseURLInput}
                 onChange={(e) => { setBaseURLInput(e.target.value); setCustomTestState('idle'); setCustomTestMsg(''); }}
                 placeholder="https://ark.cn-beijing.volces.com/api/v3"
@@ -157,6 +162,7 @@ export default function SettingsPanel() {
               <input
                 type="password"
                 className="video-apikey-input"
+                style={{ width: '80%' }}
                 value={apiKeyInput}
                 onChange={(e) => { setApiKeyInput(e.target.value); setCustomTestState('idle'); setCustomTestMsg(''); }}
                 placeholder={appConfig?.customVideo?.apiKey ? '已配置（重新输入可覆盖）' : '输入方舟 API Key'}
@@ -175,6 +181,7 @@ export default function SettingsPanel() {
               <input
                 type="text"
                 className="video-apikey-input"
+                style={{ width: '80%' }}
                 value={modelIdInput}
                 onChange={(e) => { setModelIdInput(e.target.value); setCustomTestState('idle'); setCustomTestMsg(''); }}
                 placeholder="doubao-seedance-2-0-pro"
@@ -265,8 +272,8 @@ export default function SettingsPanel() {
       <div className="settings-section settings-info">
         <h3 className="settings-section-title">说明</h3>
         <ul className="settings-info-list">
-          <li>内置模型由服务器调用方舟 API：1.0 系列免费，2.0 系列消耗积分；生成失败自动退还。</li>
-          <li>自定义模型由客户端直接调用你配置的端点，不消耗积分。</li>
+          <li>内置模型部署在本地服务器，由服务器统一调用，用户无需配置 URL / API Key；消耗积分，失败自动退还。</li>
+          <li>自定义模型由客户端直接调用你配置的端点（如 Seedance 系列，自带 API Key），不消耗积分。</li>
           <li>两种模式均遵循方舟异步任务格式（POST /contents/generations/tasks）。</li>
           <li>生成的视频会自动下载到「视频保存目录」。</li>
         </ul>

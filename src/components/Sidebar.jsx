@@ -1,17 +1,18 @@
 import { useStore } from '../store/useStore';
-import { Settings, Box, Film } from 'lucide-react';
+import { Settings, Box, Film, MessageSquare } from 'lucide-react';
 
-export default function Sidebar() {
+export default function Sidebar({ style }) {
   const activeView = useStore((s) => s.activeView);
   const setActiveView = useStore((s) => s.setActiveView);
 
   const navItems = [
     { id: 'video', label: '视频生成', icon: Film },
     { id: 'settings', label: '设置', icon: Settings },
+    { id: 'feedback', label: '意见反馈', icon: MessageSquare },
   ];
 
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" style={style}>
       {/* Logo / 品牌 */}
       <div className="sidebar-brand">
         <Box size={22} className="sidebar-brand-icon" />

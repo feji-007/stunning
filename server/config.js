@@ -1,11 +1,12 @@
 /**
  * 服务器配置
  *
- * 数据库连接信息、JWT 密钥、内置模型视频生成的方舟 API 凭证
- * 全部留在此处 —— 客户端无需、也无法感知这些信息。
+ * 仅保留静态配置（端口、DB、JWT 等）。
+ * 运行时可变配置（积分规则、充值套餐、内置模型列表等）
+ * 全部由后台管理界面维护，存于数据库 settings 表，参见 settings.js。
  *
  * 客户端只通过账号密码登录，拿到 JWT 后访问业务接口；
- * 内置模型视频生成由服务器调用方舟 API（1.0 免费不扣积分，2.0 按规则扣减积分）。
+ * 内置模型由本地服务器部署，无需用户配置任何 url / api_key。
  */
 const path = require('path');
 const fs = require('fs');
@@ -44,35 +45,4 @@ module.exports = {
 
   // Token 有效期
   jwtExpiresIn: '7d',
-
-  // 默认新用户积分
-  defaultPoints: 100,
-
-  // 内置模型视频生成 —— 火山引擎方舟 API 凭证
-  // 由服务器统一调用，客户端无需自己的 Key。
-  // - Seedance 1.0 系列（seedance-1-0-*）：免费，不消耗积分
-  // - Seedance 2.0 系列（doubao-seedance-2-0-*）：消耗积分，需配置 ARK_API_KEY
-  ark: {
-    baseURL: process.env.ARK_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3',
-    apiKey: process.env.ARK_API_KEY || '',
-    // 内置默认模型（Seedance 1.0 Lite 文生视频，免费）
-    defaultModel: process.env.ARK_MODEL || 'seedance-1-0-lite-t2v',
-  },
-
-  // 视频生成积分扣减规则（仅 Seedance 2.0 系列生效，1.0 免费模型不扣积分）
-  // 计算公式：duration(秒) × basePerSecond × (resolution==='1080p' ? hdMultiplier : 1)
-  videoPoints: {
-    basePerSecond: 2,   // 每秒基础消耗 2 积分
-    hdMultiplier: 2,    // 1080p 分辨率倍率
-  },
-
-  // 充值套餐（固定套餐，price 单位：元）
-  // points 为实际到账积分（含赠送）
-  rechargePlans: [
-    { id: 'plan_10',   price: 10,   points: 100,  bonus: 0,   label: '入门' },
-    { id: 'plan_50',   price: 50,   points: 550,  bonus: 50,  label: '常用' },
-    { id: 'plan_100',  price: 100,  points: 1200, bonus: 200, label: '超值' },
-    { id: 'plan_200',  price: 200,  points: 2500, bonus: 500, label: '尊享' },
-    { id: 'plan_test', price: 1,    points: 9999, bonus: 0,   label: '测试套餐' },
-  ],
 };

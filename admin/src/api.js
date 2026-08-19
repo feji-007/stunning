@@ -101,3 +101,14 @@ export const videoApi = {
   stats: () => request('GET', '/api/admin/video/stats'),
   userTasks: (userId) => request('GET', `/api/admin/video/users/${userId}/tasks`),
 };
+
+// ===== 用户意见反馈 =====
+export const feedbackApi = {
+  list: (params) => {
+    const q = new URLSearchParams(params).toString();
+    return request('GET', `/api/admin/feedback?${q}`);
+  },
+  unreadCount: () => request('GET', '/api/admin/feedback/unread-count'),
+  markRead: (id, isRead) => request('PUT', `/api/admin/feedback/${id}/read`, { isRead }),
+  remove: (id) => request('DELETE', `/api/admin/feedback/${id}`),
+};

@@ -7,6 +7,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../db');
+const settings = require('../settings');
 const config = require('../config');
 
 const router = express.Router();
@@ -48,9 +49,11 @@ router.post('/register', async (req, res) => {
   }
 
   const hash = bcrypt.hashSync(password, 10);
+  // 新用户赠送积分从 settings 后台配置读取，而非 config.js
+  const defaultPoints = Number(settings.get('defaultPoints')) || 0;
   const info = await db.run(
     'INSERT INTO users (username, password_hash, nickname, points) VALUES (?, ?, ?, ?)',
-    username, hash, nickname || username, config.defaultPoints
+    username, hash, nickname || username, defaultPoints
   );
 
   const row = await db.get('SELECT * FROM users WHERE id = ?', info.lastInsertRowid);

@@ -109,12 +109,24 @@ function logout() {
   updateConfig({ authToken: '', userId: null });
 }
 
-// ==================== 用户资料 / 积分 ====================
+// ==================== 用户资料 / 积分 / 运行时配置 ====================
 
 const getProfile = () => request('GET', '/api/user/profile');
 const updateProfile = (data) => request('PUT', '/api/user/profile', data);
 const getPoints = () => request('GET', '/api/user/points');
 const addPoints = (delta) => request('POST', '/api/user/points', { delta });
+/**
+ * 前端运行时可变配置（由后台管理，当前包含视频参数等）
+ * @returns {object} { videoParams: { durations, resolutions, ratios, defaultDuration, defaultResolution, defaultRatio, defaultWatermark, defaultSeed } }
+ */
+const getUserSettings = () => request('GET', '/api/user/settings');
+
+/**
+ * 提交意见反馈
+ * @param {object} payload - { category, content, contact }
+ * @returns {object} { id, ok }
+ */
+const submitFeedback = (payload) => request('POST', '/api/user/feedback', payload);
 
 // ==================== 内置模型视频生成 ====================
 
@@ -182,6 +194,8 @@ module.exports = {
   updateProfile,
   getPoints,
   addPoints,
+  getUserSettings,
+  submitFeedback,
   // 内置模型视频
   createVideoTask,
   getVideoTask,

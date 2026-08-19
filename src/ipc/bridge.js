@@ -56,6 +56,8 @@ const mockServerApi = {
   getProfile: async () => { throw new Error('非 Electron 环境'); },
   updateProfile: async () => { throw new Error('非 Electron 环境'); },
   getPoints: async () => ({ points: 0 }),
+  getSettings: async () => ({ videoParams: null }),
+  submitFeedback: async () => { throw new Error('非 Electron 环境'); },
 };
 
 const mockRechargeApi = {
@@ -71,6 +73,7 @@ const mockVideoApi = {
   getOutputDir: async () => './outputs/videos',
   openFolder: async () => {},
   getHistory: async () => [],
+  clearHistory: async () => [],
   getModels: async () => ({ models: [] }),
   generate: async () => ({ success: false, error: '非 Electron 环境，无法调用视频生成' }),
   cancel: async () => {},
@@ -124,6 +127,8 @@ export const bridge = {
     getProfile: () => wrap(resolve('server', 'getProfile')(), 'server.getProfile'),
     updateProfile: (data) => wrap(resolve('server', 'updateProfile')(data), 'server.updateProfile'),
     getPoints: () => wrap(resolve('server', 'getPoints')(), 'server.getPoints'),
+    getSettings: () => wrap(resolve('server', 'getSettings')(), 'server.getSettings'),
+    submitFeedback: (payload) => wrap(resolve('server', 'submitFeedback')(payload), 'server.submitFeedback'),
   },
 
   // ===== 充值（模拟支付）=====
@@ -141,6 +146,7 @@ export const bridge = {
     getOutputDir: () => wrap(resolve('video', 'getOutputDir')(), 'video.getOutputDir'),
     openFolder: (filePath) => wrap(resolve('video', 'openFolder')(filePath), 'video.openFolder'),
     getHistory: () => wrap(resolve('video', 'getHistory')(), 'video.getHistory'),
+    clearHistory: () => wrap(resolve('video', 'clearHistory')(), 'video.clearHistory'),
     getModels: () => wrap(resolve('video', 'getModels')(), 'video.getModels'),
 
     generate: (params) => wrap(resolve('video', 'generate')(params), 'video.generate'),

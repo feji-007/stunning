@@ -1,12 +1,14 @@
 /**
- * 用户路由：资料查询/更新、头像、积分
+ * 用户路由：资料查询/更新、头像、积分、前端运行时配置
  *  - GET    /api/user/profile
  *  - PUT    /api/user/profile        { nickname?, avatar? }
  *  - GET    /api/user/points
  *  - POST   /api/user/points         { delta }   (演示用：增减积分)
+ *  - GET    /api/user/settings                    前端运行时可变配置（视频参数等，由后台管理）
  */
 const express = require('express');
 const db = require('../db');
+const settings = require('../settings');
 const { sanitizeUser } = require('./auth');
 const { authRequired } = require('../middleware/auth');
 
@@ -65,6 +67,34 @@ router.post('/points', authRequired, async (req, res) => {
   );
   const row = await db.get('SELECT points FROM users WHERE id = ?', req.user.id);
   res.json({ points: row.points });
+});
+
+// 前端运行时可变配置（由后台管理）：当前仅返回 videoParams，后续可扩展
+router.get('/settings', authRequired, async (_req, res) => {
+  const videoParams = settings.get('videoParams') || {};
+  res.json({ videoParams });
+});
+
+// 提交意见反馈
+//   { category?, content, contact? }
+router.post('/feedback', authRequired, async (req, res) => {
+  const { category, content, contact } = req.body || {};
+  const text = typeof content === 'string' ? content.trim() : '';
+  if (!text) {
+    return res.status(400).json({ error: '反馈内容不能为空' });
+  }
+  if (text.length > 2000) {
+    return res.status(400).json({ error: '反馈内容过长（最多 2000 字）' });
+  }
+  const allowed = ['bug', 'feature', 'experience', 'other'];
+  const cat = allowed.includes(category) ? category : 'other';
+  const contactStr = typeof contact === 'string' ? contact.trim().slice(0, 100) : '';
+
+  const info = await db.run(
+    'INSERT INTO feedback (user_id, category, content, contact) VALUES (?, ?, ?, ?)',
+    req.user.id, cat, text, contactStr
+  );
+  res.json({ id: info.lastInsertRowid, ok: true });
 });
 
 module.exports = router;
