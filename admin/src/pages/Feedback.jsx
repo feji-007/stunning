@@ -8,13 +8,14 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Input, Select, Table, Tag, Space, Button, Popconfirm, Tooltip, message, Card,
+  Input, Select, Tag, Space, Button, Popconfirm, Tooltip, message, Card,
 } from 'antd';
 import {
   ReloadOutlined, DeleteOutlined, CheckOutlined, EyeOutlined, EyeInvisibleOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { feedbackApi } from '../api';
+import ResizableTable from '../components/ResizableTable';
 
 // 状态筛选选项
 const STATUS_OPTIONS = [
@@ -119,12 +120,14 @@ export default function FeedbackPage() {
       dataIndex: 'id',
       key: 'id',
       width: 70,
+      sorter: (a, b) => a.id - b.id,
     },
     {
       title: '状态',
       dataIndex: 'isRead',
       key: 'isRead',
       width: 90,
+      sorter: (a, b) => (a.isRead ? 1 : 0) - (b.isRead ? 1 : 0),
       render: (isRead) =>
         isRead ? <Tag color="default">已读</Tag> : <Tag color="orange">未读</Tag>,
     },
@@ -133,6 +136,7 @@ export default function FeedbackPage() {
       dataIndex: 'category',
       key: 'category',
       width: 110,
+      sorter: (a, b) => String(a.category || '').localeCompare(String(b.category || '')),
       render: (cat, r) => (
         <Tag color={CATEGORY_TAG_COLOR[cat] || 'default'}>
           {r.categoryLabel || cat}
@@ -155,6 +159,7 @@ export default function FeedbackPage() {
       dataIndex: 'contact',
       key: 'contact',
       width: 160,
+      sorter: (a, b) => String(a.contact || '').localeCompare(String(b.contact || '')),
       render: (v) => v || <span style={{ color: '#bbb' }}>-</span>,
     },
     {
@@ -173,6 +178,7 @@ export default function FeedbackPage() {
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: 170,
+      sorter: (a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime(),
       render: (v) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm:ss') : '-'),
     },
     {
@@ -235,7 +241,7 @@ export default function FeedbackPage() {
           </Space>
         }
       >
-        <Table
+        <ResizableTable
           rowKey="id"
           columns={columns}
           dataSource={list}

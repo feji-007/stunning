@@ -1,7 +1,6 @@
 // 用户管理页面：用户列表、搜索、调整积分、编辑、删除
 import { useEffect, useState, useCallback } from 'react';
 import {
-  Table,
   Input,
   Button,
   Space,
@@ -15,6 +14,7 @@ import {
 import { EditOutlined, DeleteOutlined, DollarOutlined, ReloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { usersApi } from '../api';
+import ResizableTable from '../components/ResizableTable';
 
 export default function UsersPage() {
   const [data, setData] = useState([]);
@@ -128,14 +128,30 @@ export default function UsersPage() {
   };
 
   const columns = [
-    { title: 'ID', dataIndex: 'id', width: 80 },
-    { title: '用户名', dataIndex: 'username', width: 140 },
-    { title: '昵称', dataIndex: 'nickname', width: 160 },
-    { title: '积分', dataIndex: 'points', width: 120 },
+    { title: 'ID', dataIndex: 'id', width: 80, sorter: (a, b) => a.id - b.id },
+    {
+      title: '用户名',
+      dataIndex: 'username',
+      width: 140,
+      sorter: (a, b) => String(a.username || '').localeCompare(String(b.username || '')),
+    },
+    {
+      title: '昵称',
+      dataIndex: 'nickname',
+      width: 160,
+      sorter: (a, b) => String(a.nickname || '').localeCompare(String(b.nickname || '')),
+    },
+    {
+      title: '积分',
+      dataIndex: 'points',
+      width: 120,
+      sorter: (a, b) => (a.points ?? 0) - (b.points ?? 0),
+    },
     {
       title: '注册时间',
       dataIndex: 'createdAt',
       width: 180,
+      sorter: (a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime(),
       render: (v) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '-'),
     },
     {
@@ -186,7 +202,7 @@ export default function UsersPage() {
           </Space>
         }
       >
-        <Table
+        <ResizableTable
           rowKey="id"
           columns={columns}
           dataSource={data}

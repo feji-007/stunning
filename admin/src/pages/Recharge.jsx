@@ -7,11 +7,12 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Card, Row, Col, Statistic, Table, Button, Modal, Form,
+  Card, Row, Col, Statistic, Button, Modal, Form,
   Input, InputNumber, Popconfirm, Space, message,
 } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { rechargeApi } from '../api';
+import ResizableTable from '../components/ResizableTable';
 
 export default function RechargePage() {
   const [plans, setPlans] = useState([]);
@@ -115,14 +116,45 @@ export default function RechargePage() {
   };
 
   const columns = [
-    { title: '套餐ID', dataIndex: 'id', key: 'id' },
-    { title: '标签', dataIndex: 'label', key: 'label' },
-    { title: '价格(元)', dataIndex: 'price', key: 'price' },
-    { title: '积分', dataIndex: 'points', key: 'points' },
-    { title: '赠送', dataIndex: 'bonus', key: 'bonus' },
+    {
+      title: '套餐ID',
+      dataIndex: 'id',
+      key: 'id',
+      width: 160,
+      sorter: (a, b) => String(a.id || '').localeCompare(String(b.id || '')),
+    },
+    {
+      title: '标签',
+      dataIndex: 'label',
+      key: 'label',
+      width: 160,
+      sorter: (a, b) => String(a.label || '').localeCompare(String(b.label || '')),
+    },
+    {
+      title: '价格(元)',
+      dataIndex: 'price',
+      key: 'price',
+      width: 120,
+      sorter: (a, b) => (a.price ?? 0) - (b.price ?? 0),
+    },
+    {
+      title: '积分',
+      dataIndex: 'points',
+      key: 'points',
+      width: 120,
+      sorter: (a, b) => (a.points ?? 0) - (b.points ?? 0),
+    },
+    {
+      title: '赠送',
+      dataIndex: 'bonus',
+      key: 'bonus',
+      width: 120,
+      sorter: (a, b) => (a.bonus ?? 0) - (b.bonus ?? 0),
+    },
     {
       title: '操作',
       key: 'action',
+      width: 140,
       render: (_, record) => (
         <Space>
           <Button type="link" size="small" onClick={() => handleEdit(record)}>编辑</Button>
@@ -165,7 +197,7 @@ export default function RechargePage() {
         <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>新增套餐</Button>
       </div>
 
-      <Table
+      <ResizableTable
         rowKey="id"
         columns={columns}
         dataSource={plans}

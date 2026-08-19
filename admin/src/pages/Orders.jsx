@@ -6,9 +6,10 @@
  * - 状态筛选变化或搜索时重置到第 1 页
  */
 import { useState, useEffect, useCallback } from 'react';
-import { Input, Select, Table, Tag, Space, message } from 'antd';
+import { Input, Select, Tag, Space, message } from 'antd';
 import dayjs from 'dayjs';
 import { rechargeApi } from '../api';
+import ResizableTable from '../components/ResizableTable';
 
 // 状态筛选选项：值 '' 表示全部
 const STATUS_OPTIONS = [
@@ -68,10 +69,17 @@ export default function OrdersPage() {
   };
 
   const columns = [
-    { title: '订单号', dataIndex: 'orderNo', key: 'orderNo' },
+    {
+      title: '订单号',
+      dataIndex: 'orderNo',
+      key: 'orderNo',
+      width: 200,
+      sorter: (a, b) => String(a.orderNo || '').localeCompare(String(b.orderNo || '')),
+    },
     {
       title: '用户',
       key: 'user',
+      width: 160,
       render: (_, r) => (
         <span>
           {r.username}
@@ -79,26 +87,56 @@ export default function OrdersPage() {
         </span>
       ),
     },
-    { title: '套餐', dataIndex: 'planId', key: 'planId' },
-    { title: '金额(元)', dataIndex: 'price', key: 'price' },
-    { title: '积分', dataIndex: 'points', key: 'points' },
-    { title: '赠送', dataIndex: 'bonus', key: 'bonus' },
+    {
+      title: '套餐',
+      dataIndex: 'planId',
+      key: 'planId',
+      width: 120,
+      sorter: (a, b) => String(a.planId || '').localeCompare(String(b.planId || '')),
+    },
+    {
+      title: '金额(元)',
+      dataIndex: 'price',
+      key: 'price',
+      width: 100,
+      sorter: (a, b) => (a.price ?? 0) - (b.price ?? 0),
+    },
+    {
+      title: '积分',
+      dataIndex: 'points',
+      key: 'points',
+      width: 100,
+      sorter: (a, b) => (a.points ?? 0) - (b.points ?? 0),
+    },
+    {
+      title: '赠送',
+      dataIndex: 'bonus',
+      key: 'bonus',
+      width: 100,
+      sorter: (a, b) => (a.bonus ?? 0) - (b.bonus ?? 0),
+    },
     {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
+      width: 110,
+      sorter: (a, b) => String(a.status || '').localeCompare(String(b.status || '')),
       render: (s) => <Tag color={STATUS_TAG_COLOR[s] || 'default'}>{s}</Tag>,
     },
     {
       title: '支付时间',
       dataIndex: 'paidAt',
       key: 'paidAt',
+      width: 170,
+      sorter: (a, b) => new Date(a.paidAt || 0).getTime() - new Date(b.paidAt || 0).getTime(),
       render: (v) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm:ss') : '-'),
     },
     {
       title: '创建时间',
       dataIndex: 'createdAt',
       key: 'createdAt',
+      width: 170,
+      sorter: (a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime(),
       render: (v) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm:ss') : '-'),
     },
   ];
@@ -122,11 +160,12 @@ export default function OrdersPage() {
         />
       </Space>
 
-      <Table
+      <ResizableTable
         rowKey="id"
         columns={columns}
         dataSource={list}
         loading={loading}
+        scroll={{ x: 1200 }}
         pagination={{
           current: page,
           pageSize,

@@ -1,11 +1,12 @@
 // 视频任务管理页面：展示任务列表、统计概览、搜索筛选与详情查看
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Card, Row, Col, Input, Select, Table, Tag, Typography, Button, Modal, Spin, Statistic, Space, Descriptions,
+  Card, Row, Col, Input, Select, Tag, Typography, Button, Modal, Spin, Statistic, Space, Descriptions,
 } from 'antd';
 import { EyeOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { videoApi } from '../api';
+import ResizableTable from '../components/ResizableTable';
 
 const { Text } = Typography;
 
@@ -85,17 +86,20 @@ export default function VideoTasksPage() {
       title: 'ID',
       dataIndex: 'id',
       width: 70,
+      sorter: (a, b) => a.id - b.id,
     },
     {
       title: '用户',
       dataIndex: 'username',
       width: 120,
+      sorter: (a, b) => String(a.username || '').localeCompare(String(b.username || '')),
       render: (v, r) => v || r.nickname || r.userId,
     },
     {
       title: '模型',
       dataIndex: 'model',
       width: 140,
+      sorter: (a, b) => String(a.model || '').localeCompare(String(b.model || '')),
       render: (v) => v || '-',
     },
     {
@@ -112,28 +116,33 @@ export default function VideoTasksPage() {
       title: '状态',
       dataIndex: 'status',
       width: 100,
+      sorter: (a, b) => String(a.status || '').localeCompare(String(b.status || '')),
       render: (v) => <Tag color={STATUS_COLOR[v] || 'default'}>{STATUS_LABEL[v] || v}</Tag>,
     },
     {
       title: '积分消耗',
       dataIndex: 'pointsCost',
       width: 100,
+      sorter: (a, b) => (a.pointsCost ?? 0) - (b.pointsCost ?? 0),
       render: (v) => v ?? 0,
     },
     {
       title: '已退还',
       dataIndex: 'refunded',
       width: 80,
+      sorter: (a, b) => (a.refunded ? 1 : 0) - (b.refunded ? 1 : 0),
       render: (v) => (v ? <Tag color="gold">✓</Tag> : <Text type="secondary">✗</Text>),
     },
     {
       title: '创建时间',
       dataIndex: 'createdAt',
       width: 170,
+      sorter: (a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime(),
       render: (v) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm:ss') : '-'),
     },
     {
       title: '操作',
+      key: 'action',
       width: 90,
       render: (_, r) => (
         <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => setDetail(r)}>
@@ -207,7 +216,7 @@ export default function VideoTasksPage() {
       </Space>
 
       {/* 任务表格 */}
-      <Table
+      <ResizableTable
         rowKey="id"
         columns={columns}
         dataSource={tasks}
