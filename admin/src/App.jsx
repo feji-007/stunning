@@ -26,7 +26,7 @@ const menuItems = [
   { key: '/orders', icon: <GiftOutlined />, label: '订单记录' },
   { key: '/video-tasks', icon: <VideoCameraOutlined />, label: '视频任务' },
   { key: '/feedback', icon: <MessageOutlined />, label: '用户意见' },
-  { key: '/user-settings', icon: <ToolOutlined />, label: '模型配置' },
+  { key: '/user-settings', icon: <ToolOutlined />, label: '用户模型配置' },
   { key: '/settings', icon: <SettingOutlined />, label: '系统配置' },
 ];
 
