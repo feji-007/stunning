@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import { Layout, Menu, Dropdown, Button, message, Spin, Badge } from 'antd';
+import { Layout, Menu, Dropdown, Button, message, Modal, Spin, Badge } from 'antd';
 import {
   DashboardOutlined, UserOutlined, GiftOutlined, SettingOutlined,
   VideoCameraOutlined, LogoutOutlined, DownOutlined, LockOutlined, MessageOutlined, ToolOutlined,
@@ -17,6 +17,10 @@ import SettingsPage from './pages/Settings.jsx';
 import UserSettingsPage from './pages/UserSettings.jsx';
 
 const { Header, Sider, Content } = Layout;
+
+/** 登录空闲超时：30 分钟内无任何操作自动退出登录 */
+const IDLE_TIMEOUT = 30 * 60 * 1000;
+const ACTIVITY_EVENTS = ['mousemove', 'mousedown', 'keydown', 'click', 'scroll', 'touchstart'];
 
 /** 静态菜单定义；反馈项的 label 在 AdminLayout 内动态注入未读徽标 */
 const menuItems = [
@@ -56,6 +60,31 @@ function AdminLayout({ children }) {
   }, [navigate]);
 
   useEffect(() => { loadAdmin(); }, [loadAdmin]);
+
+  // 登录空闲超时：IDLE_TIMEOUT 内无任何操作则自动退出登录
+  useEffect(() => {
+    if (!getToken()) return;
+    let timer;
+    const handleIdle = () => {
+      setToken('');
+      Modal.warning({
+        title: '登录已超时',
+        content: '由于长时间无操作，您已被自动退出登录，请重新登录。',
+        okText: '重新登录',
+        onOk: () => navigate('/login', { replace: true }),
+      });
+    };
+    const resetTimer = () => {
+      clearTimeout(timer);
+      timer = setTimeout(handleIdle, IDLE_TIMEOUT);
+    };
+    ACTIVITY_EVENTS.forEach((evt) => window.addEventListener(evt, resetTimer, { passive: true }));
+    resetTimer();
+    return () => {
+      clearTimeout(timer);
+      ACTIVITY_EVENTS.forEach((evt) => window.removeEventListener(evt, resetTimer));
+    };
+  }, [navigate]);
 
   // 拉取未读反馈数量，并在反馈页停留期间每 30 秒刷新一次
   const loadUnreadFeedback = useCallback(async () => {

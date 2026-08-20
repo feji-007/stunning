@@ -56,7 +56,7 @@ function buildSchema() {
       username      ${TYPE_SHORT}    NOT NULL UNIQUE,
       password_hash ${TYPE_SHORT}    NOT NULL,
       nickname      ${TYPE_SHORT}    NOT NULL DEFAULT '',
-      avatar        ${TYPE_SHORT}    NOT NULL DEFAULT '',
+      avatar        ${TYPE_TEXT},
       points        INTEGER NOT NULL DEFAULT 0,
       created_at    ${TS_TYPE} NOT NULL DEFAULT (${NOW}),
       updated_at    ${TS_TYPE} NOT NULL DEFAULT (${NOW})
@@ -177,6 +177,12 @@ async function initDb() {
   // 建表（CREATE TABLE IF NOT EXISTS：已有则保留历史数据，缺失则新建）
   for (const sql of tables) {
     await db.exec(sql);
+  }
+
+  // Existing MySQL databases retain the original VARCHAR(255) avatar column
+  // after CREATE TABLE IF NOT EXISTS, so widen it for stored data URLs.
+  if (db.dialect === 'mysql') {
+    await db.exec("ALTER TABLE users MODIFY COLUMN avatar LONGTEXT NULL");
   }
 
   // 迁移：为已有 video_tasks 表补 local_path 列（列已存在则忽略错误）
